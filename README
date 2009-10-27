@@ -1,0 +1,159 @@
+
+
+			*** OPT-MHM ***
+
+
+
+
+SOFTWARE INFORMATION :
+======================
+
+@author : Tristan Bereau
+          (bereau@cmu.edu)
+
+@contact: Department of Physics
+          Carnegie Mellon University
+          Pittsburgh, PA 15213 USA
+
+@date   : October 2009
+
+@version: 1.7
+
+@license: GNU GENERAL PUBLIC LICENSE
+          Please share feedback, bugs, code extensions to bereau@cmu.edu
+		  
+
+
+PROGRAM :
+=========
+
+The multiple histogram method is used to compute temperature averages, as well
+as free energy profiles. It relies on any number of simulations taken at
+various temperatures, such as a parallel tempering simulation. One (or
+optionally two) order parameter(s) is (are) used as input, as well as the
+current energy. Hamiltonian Replica Exchange analysis is implemented. There is
+no support for Umbrella sampling (though it's easily extendable).
+
+
+References :
+============
+
+ * Ferrenberg and Swendsen, PRL, 61, 1988
+   -> Histogram reweighting
+
+ * Kumar et al., Journal of Computational Chemistry, 13, 1992, 
+   -> Weighted Histogram Analysis Method (WHAM), or Multiple Histogram Method
+   (MHM)
+
+ * Bereau and Swenden, Journal of Computational Physics, 228, 2009
+   -> Optimized convergence for the free energy differences between
+   simulations. Algorithm implemented in optimizedf() in 'opt-mhm.c'.
+   Describes the acronyms for DI and SINH algorithm used in the code.
+
+ * Affentranger et al., JCTC, 2, 2006
+   -> Hamiltonian Replica Exchange combined with WHAM.
+
+GETTING STARTED :
+=================
+
+System Requirements : 
+Compiler            : gcc/icc. This code was tested with both on a Linux
+                      system. Depending on your compiler, you might want to
+                      change the default values by hand. Right now, gcc is
+                      used for both the serial and the parallel codes.		
+Additional software : None.
+
+
+
+INSTALLATION :
+==============
+
+Untar. Then type 'make serial' in the opt-mhm directory for a serial version, or
+'make openmp' for a threaded version. To compile both at once type 'make all'
+or simply 'make'.
+
+
+
+QUICK START :
+=============
+
+opt-mhm needs a few things :
+
+  * Observable files which contains all data points. The following format should
+    be used without any order parameter
+
+    Time		Energy
+
+    for one order parameter:
+
+    Time		Coord			Energy
+
+    and for two order parameters:
+
+    Time		Coord1			Coord2			Energy
+
+    where 
+      'Time' shows the advancement of the simulation. It can be in any kind of
+      units (MC/MD time, snapshot ID, etc.); 
+	  
+      'Coord' is the value of the order parameter we're measuring. Again,
+      any unit can be used.
+
+      'Energy' is some energy that we use to measure the system, such as
+      potential energy, total energy, internal energy, etc. 
+      *** The units need to be in k_BT ***
+
+
+  * A metafile which contains the relative path to all simulations, plus some
+    extra information. The folowing format should be used:
+
+    Path_i		Temperature_i		Snapshot_i	  autocor_factor_i
+
+    where
+      'Path_i' is the relative path from metafile to the observable file of
+      simulation 'i'.
+
+      'Temperature_i' is the temperature at which simulation 'i' was
+      performed.
+      *** Temperature should be expressed in multiples of k_BT ***
+
+      'Snapshot_i' determines the first snapshot that should be used when
+      sampling. This is useful when data was taken before equilibrium was
+      reached. This should obviously be compatible with the format used for
+      'Time' in the observable file.
+
+      'autocor_factor_i' represents how correlated the data is. It is an
+      integer that specifies how many files should be taken into account. For
+      example, a factor of 10 means that one data point every 10 will be
+      sampled to avoid correlations.
+
+
+Command line arguments are explained by simply launching the program without
+arguments.
+
+Note that one can run Hamiltonian Replica Exchange analyses by replacing
+temperatures by force field coupling (as a multiplicative factor of the
+original interaction), and the potential energy of the altered
+interaction(s). The temperature at which the analysis is done should be given
+as an input parameter.
+
+BUGS/NOTES :
+============
+
+ * In case only one order parameter is defined, the free energy profile is saved
+   in one file containing 2D data: free energy (3rd column in the data file) as a
+   function of temperature (1st column) AND the first order parameter (2nd
+   column). In order to plot the free energy profile for a given temperature in
+   gnuplot, use the following command  
+
+   plot 'OUTPUT_FILE' u 2:3 every :::X::X
+
+   where X is the index corresponding to the temperature 
+   (T = T_MIN + X * T_STEP). 
+
+ * Order the simulations inside the metafile such that temperatures are
+   numerically sorted. The algorithm assumes that neighboring simulations (as
+   ordered in the metafile) have the largest overlap.
+
+ 
+
