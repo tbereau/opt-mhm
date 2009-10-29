@@ -1169,7 +1169,7 @@ void temp_averages(void)
 {
   double temp, entropy, spec_heat, spec_heat_old;
   double dcoorddT, coordE;
-  double f_temp, arg, beta, sumDen, E, E2, tmp, coord;
+  double f_temp, arg, beta, sumDen, E, E2, E4, tmp, coord;
   double *argarray;	
   int i_HE, i, j;	
   FILE *file, *file2;
@@ -1197,6 +1197,8 @@ void temp_averages(void)
       E     = 0.;
       // energy square
       E2    = 0.;
+      // energy to the four
+      E4    = 0.;
       // order parameter
       coord = 0.;
       coordE = 0.;
@@ -1217,17 +1219,19 @@ void temp_averages(void)
 	  for (j = 0; j<N_SIMS; ++j)
 	    sumDen += NORM_HIST[j]*exp(argarray[j]-arg);
 	  tmp     = exp(-arg)/sumDen;
-	  f_temp +=                                 tmp;
-	  E      +=                 HIST[i][i_HE] * tmp;
-	  E2     += HIST[i][i_HE] * HIST[i][i_HE] * tmp;
+	  f_temp +=                                        tmp;
+	  E      +=                        HIST[i][i_HE] * tmp;
+	  E2     +=        HIST[i][i_HE] * HIST[i][i_HE] * tmp;
+	  E4     += pow(HIST[i][i_HE] * HIST[i][i_HE] * tmp,2);
 	  if (COORD1_FLAG) {
-	    coord  +=               COORD1[i][i_HE] * tmp;
-	    coordE += COORD1[i][i_HE]*HIST[i][i_HE] * tmp;	 
+	    coord  +=                    COORD1[i][i_HE] * tmp;
+	    coordE +=      COORD1[i][i_HE]*HIST[i][i_HE] * tmp;	 
 	  }
 	}
       }			
       E        /=      f_temp;
       E2       /=      f_temp;
+      E4       /=      f_temp;
       if (COORD1_FLAG) {
 	coord    /=      f_temp;		   
 	coordE   /=      f_temp;
@@ -1240,11 +1244,11 @@ void temp_averages(void)
       entropy  += .5 * TSTEP * (spec_heat+spec_heat_old) * beta;
 
       if (COORD1_FLAG) 
-	fprintf(file,"%f \t %f \t %f \t %f \t %f \t %f \t %f\n",
-		temp,E,E2,spec_heat,entropy,coord,dcoorddT);
+	fprintf(file,"%f \t %f \t %f \t %f \t %f \t %f \t %f \t %f\n",
+		temp,E,E2,E4,spec_heat,entropy,coord,dcoorddT);
       else
-	fprintf(file,"%f \t %f \t %f \t %f \t %f\n",
-		temp,E,E2,spec_heat,entropy);
+	fprintf(file,"%f \t %f \t %f \t %f \t %f \t %f\n",
+		temp,E,E2,E4,spec_heat,entropy);
 
       spec_heat_old = spec_heat;			
       temp += TSTEP;			
