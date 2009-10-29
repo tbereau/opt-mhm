@@ -1189,9 +1189,9 @@ void temp_averages(void)
   if (file) {
     fprintf (file,"# Averages as a function of temperature\n");
     if (COORD1_FLAG)
-      fprintf (file,"# T \t E \t E^2 \t C_V \t S \t Order parameter \t d(Q)/dT\n");	   
+      fprintf (file,"# T \t E \t E^2 \t E^4 \t C_V \t S \t Order parameter \t d(Q)/dT\n");	   
     else
-      fprintf (file,"# T \t E \t E^2 \t C_V \t S\n");	   
+      fprintf (file,"# T \t E \t E^2 \t E^4 \t C_V \t S\n");	   
     while (temp<=TMAX+1e-8) {
       // energy
       E     = 0.;
@@ -1222,7 +1222,8 @@ void temp_averages(void)
 	  f_temp +=                                        tmp;
 	  E      +=                        HIST[i][i_HE] * tmp;
 	  E2     +=        HIST[i][i_HE] * HIST[i][i_HE] * tmp;
-	  E4     += pow(HIST[i][i_HE] * HIST[i][i_HE] * tmp,2);
+	  E4     += HIST[i][i_HE] * HIST[i][i_HE] 
+	    * HIST[i][i_HE] * HIST[i][i_HE] * tmp;
 	  if (COORD1_FLAG) {
 	    coord  +=                    COORD1[i][i_HE] * tmp;
 	    coordE +=      COORD1[i][i_HE]*HIST[i][i_HE] * tmp;	 
