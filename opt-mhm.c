@@ -1348,7 +1348,7 @@ void microcanonical(void)
 
     // write to file
     printf("Writing to file...\n");
-    energy = emin;
+    energy = emin+ESTEP/2.;
     e_index = 0;	   
     while (energy<=emax+1e-8) {
       fprintf(file, "%f \t %e \t %e \t %e\n",energy,gE[e_index],log(gE[e_index]),lnGE[e_index]);
