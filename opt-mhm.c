@@ -1,11 +1,12 @@
 /*
- * opt-mhm -- Optimized Multiple Histogram Method
- * Computes thermodynamic properties and continuous approximations
- * to different observables.
+ * opt-mhm -- Optimized Multiple Histogram Method 
+ * 
+ * Computes thermodynamic properties and continuous approximations to
+ * different observables. Also computes density of states and entropy.
  *
- * Version: 1.7
+ * Version: 1.8
  * Author: Tristan Bereau 
- * Date: 10/2009
+ * Date: 03/2010
  *
  */
 
@@ -36,14 +37,16 @@ double COORD2_MIN, COORD2_MAX, COORD2_WIDTH;
 int NUM_COORD1, NUM_COORD2, N_SIMS;
 double TEMP_PROB, TMIN, TMAX;
 char *META_FILE;
-double *BETAS, *FENERGIES, *FENERGIES_TEMP;
+double *BETAS, *FENERGIES, *FENERGIES_TEMP, *ENTROPY;
 int *NORM_HIST, *HIST_SIZES, *START_SAMPLING, *AUTOCOR_FACTOR;
-double **HIST, **COORD1, **COORD2, **PROB1, **PROB2; 
+double **HIST, **COORD1, **COORD2, **PROB1, **PROB2;
+double **B_HIST, **B_ENTROPY, **B_ERROR; 
 int COORD1_FLAG, COORD2_FLAG;
 int PARTIAL;
 int PARTIAL_Q_ID, PARTIAL_Q_NUM;
 double PARTIAL_Q_MIN, PARTIAL_Q_MAX;
-
+int EBINS;
+double EMIN, EMAX;
 
 double EPS          =    1e-15;
 double PI           = 3.14159265358979323846;
@@ -54,13 +57,14 @@ double TOL_FERMI    =    1e-12; // Tolerance when solving fermi equation.
 double TOL_ITER     =     1e-9; // tolerance when converging free energies.
 double TSTEP        =     0.01; // Temperature step between WHAM averages
 double ESTEP        =       1.; // Energy step for microcanonical analysis
+int    BSTRAP       =        0; // Number of times to perform bootstrap on energy histograms
 char *PARTIAL_FILE  = "partial.dat";
 char *OUTPUT_FILE   = "f.profile.dat";
 char *TEMP_AVERAGE  = "avg_1.dat";
 char *TEMP_AVERAGE2 = "avg_2.dat";
 char *MICRO_FILE    = "micro.dat";
 char *F_FILE        = "free_energies.dat";
-
+char *B_FILE        = "entropy_error.dat";
 
 
 // Init message
@@ -75,6 +79,8 @@ char *init = "\n\
 
 // Command line arguments
 char *COMMAND_LINE = "options:\n\
+  -b  number                bootstrap energy histograms 'number' times for entropy error analysis\n\
+  -bf file                  output file name for the entropy error (default 'entropy_error.dat')\n\
   -d                        apply DI method *after* SINH (Bereau and Swendsen, J Comp Phys, 2009)\n\
   -do                       apply DI method ONLY (default is SINH only)\n\
   -e  energy_step           energy step for micro- and canonical analyses (default 1.)\n\
@@ -118,7 +124,7 @@ int main (int argc, char * const argv[])
   time_t start_n, end_n;
   double dif_n, f_bar;
   int self_it, sinh_alg, tempbound;
-  int i, micro_flag, hremd_flag;
+  int i, micro_flag, hremd_flag, b_index;
 
   // By default: DI is off and SINH is on
   self_it=0; 
@@ -300,6 +306,22 @@ int main (int argc, char * const argv[])
       F_FILE = argv[i+1];
       ++i;			
     }
+    else if (strcmp(argv[i], "-b") == 0){
+      if (argc-i<2) {
+	fprintf(stderr, "Not enough arguments for option %s.\n",argv[i]);
+	exit(1);
+      }
+      BSTRAP = atoi(argv[i+1]);
+      ++i;
+    } 
+    else if (strcmp(argv[i], "-bf") == 0){
+      if (argc-i<2) {
+	fprintf(stderr,"Not enough arguments for option %s.\n",argv[i]);
+	exit(1);									
+      }
+      B_FILE = argv[i+1];
+      ++i;
+    }
     else
       META_FILE = argv[i];			
   }
@@ -437,6 +459,32 @@ int main (int argc, char * const argv[])
     microcanonical();
   
 
+  // bootstrapping
+  b_index = 0;
+  if (BSTRAP > 0) {
+    srand(time(NULL));
+    TOL_ITER     =     1e-4;
+    // initialize B_ENTROPY
+    B_ENTROPY = calloc(BSTRAP * sizeof *B_ENTROPY, sizeof *B_ENTROPY);
+
+    while (b_index < BSTRAP) {
+      printf("Bootstrapping %d/%d...\n",b_index+1,BSTRAP);
+      // resample data
+      b_resample();
+      // calculate free energies of each temperature using DI method
+      b_selfiterative();	
+      // calculate entropy
+      b_entropy(b_index);
+      ++b_index;
+    }
+    // Calculate mean and standard deviation
+    B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
+    b_error();
+    // write entropy error to file
+    // file contains E vs S(E) vs error(S(E))
+    write_b_file();
+  }
+
 	
   // Free stuff
   free(BETAS);
@@ -457,7 +505,20 @@ int main (int argc, char * const argv[])
   for (i=0;i<N_SIMS;++i)
     free(HIST[i]);
   free(HIST);	
-	
+  if (micro_flag)
+    free(ENTROPY);
+  if (BSTRAP > 0) {
+    for (i=0;i<N_SIMS;++i)
+      free(B_HIST[i]);
+    free(B_HIST);
+    for (i=0;i<BSTRAP;++i)
+      free(B_ENTROPY[i]);
+    free(B_ENTROPY);
+    for (i=0;i<BSTRAP;++i)
+      free(B_ERROR[i]);
+    free(B_ERROR);
+  }
+  
 
   printf("Operation successful.\n");   
 
@@ -1288,8 +1349,8 @@ void temp_averages(void)
 
 void microcanonical(void)
 {
-  int i, i_HE, ebins, e_index;	
-  double energy, emin, emax;
+  int i, i_HE, e_index;	
+  double energy;
   double g_E, g_E_previous, G_E;
   double *gE, *lnGE;	
   FILE *file;
@@ -1299,37 +1360,37 @@ void microcanonical(void)
   printf("Performing microcanonical analysis and saving to file '%s'.\n",MICRO_FILE);	
 
 
-  // Determine emin and emax from the histograms.
-  emin= 1e30;
-  emax=-1e30;		
+  // Determine EMIN and EMAX from the histograms.
+  EMIN= 1e30;
+  EMAX=-1e30;		
 
   for (i=0; i<N_SIMS; ++i){
     for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
-      emin = min(emin,HIST[i][i_HE]);
-      emax = max(emax,HIST[i][i_HE]);
+      EMIN = min(EMIN,HIST[i][i_HE]);
+      EMAX = max(EMAX,HIST[i][i_HE]);
     }
   }
-  ebins = 2+(int)((emax - emin)/ESTEP);	
+  EBINS = 2+(int)((EMAX - EMIN)/ESTEP);	
 	
   // initialize the phase-space volume G_E
   G_E = 0.;
   g_E_previous = 0.;	
 	
   // initialize arrays
-  gE = calloc (ebins * sizeof *gE, sizeof *gE);
-  lnGE = calloc (ebins * sizeof *lnGE, sizeof *lnGE);
-
+  gE = calloc (EBINS * sizeof *gE, sizeof *gE);
+  lnGE = calloc (EBINS * sizeof *lnGE, sizeof *lnGE);
+  ENTROPY = calloc (EBINS * sizeof *ENTROPY, sizeof *ENTROPY);
 	
   if (file) {
     fprintf (file,"# Microcanonical analysis\n");		
     fprintf (file,"# Averages as a function of energy\n");
     fprintf (file,"# E\tDoS\tEntropy\tHertz entropy\tdS/dE\tC_v\n");
 
-    energy = emin;
+    energy = EMIN+ESTEP/2.;
     e_index = 0;
     // DoS
     printf("Calculating density of states...\n");
-    while (energy<=emax+1e-8) {
+    while (energy<=EMAX+1e-8) {
       density_of_states(energy,&g_E);
 		    
       gE[e_index] = g_E;
@@ -1340,6 +1401,9 @@ void microcanonical(void)
       // Hertz entropy log(G_E)
       lnGE[e_index]  = log(G_E);
 		    
+      // Write to ENTROPY variable
+      ENTROPY[e_index] = log(gE[e_index]);
+
       // update variables
       energy  += ESTEP;
       ++e_index;			
@@ -1348,9 +1412,9 @@ void microcanonical(void)
 
     // write to file
     printf("Writing to file...\n");
-    energy = emin+ESTEP/2.;
+    energy = EMIN+ESTEP/2.;
     e_index = 0;	   
-    while (energy<=emax+1e-8) {
+    while (energy<=EMAX+1e-8) {
       fprintf(file, "%f \t %e \t %e \t %e\n",energy,gE[e_index],log(gE[e_index]),lnGE[e_index]);
       // update variables
       energy  += ESTEP;
@@ -1401,6 +1465,213 @@ void density_of_states(double E, double *g_E)
       }
     }
   }		
+}
+
+
+void b_densityofstates(double E, double *g_E)
+/* Evaluate the density of states at energy E
+ * for the bootstrap data
+ * where E is in [E-ESTEP/2;E+ESTEP/2]
+ * Returns for a given E interval:
+ * g_E the density of states
+ */
+{
+  int i, k, i_HE;
+  double sumDen, sumNum, arg, *argarray;	
+  //double dgdE, d2gdE2, d2SdE2;
+
+  argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
+  sumDen = 0.;
+  sumNum = 0.;
+	
+  *g_E = 0.;	
+	
+  for (i = 0; i<N_SIMS; ++i){
+    for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
+      if (B_HIST[i][i_HE] >= E-ESTEP/2. && B_HIST[i][i_HE] <= E+ESTEP/2.){				
+	sumDen = 0.;
+	arg = -1e300;
+	for (k = 0; k<N_SIMS; ++k){
+	  argarray[k] = -BETAS[k]*B_HIST[i][i_HE]-FENERGIES[k];
+	  // calculate max value
+	  if (argarray[k]>arg)
+	    arg = argarray[k];
+	}
+	sumNum = exp(-arg);				
+	for (k = 0; k<N_SIMS; ++k)
+	  sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	*g_E += sumNum/sumDen;				
+      }
+    }
+  }		
+}
+
+
+
+void b_resample(void) 
+/* Resample each energy histograms to perform bootstrap analysis
+ */
+{
+  int j, i_HE;
+
+  // Initialize B_HIST
+  B_HIST   = calloc (N_SIMS * sizeof **B_HIST, sizeof **B_HIST);			
+  for (j = 0; j < N_SIMS; ++j) 
+    B_HIST[j]   = calloc(HIST_SIZES[j] * sizeof *B_HIST, sizeof *B_HIST);
+  // Sample randomly
+  for (j = 0; j<N_SIMS; ++j){
+    for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
+      B_HIST[j][i_HE] = HIST[j][rand() % HIST_SIZES[j]];
+    }
+  }
+}
+
+
+
+void b_selfiterative(void)
+/* DI method on the bootstrap data
+ */
+{
+  double *fold_rec, *argarray, deltaF;
+  double sumNum, sumDen, arg;	
+  int iter, i_HE, i, j, k;
+
+  deltaF=1.;
+	
+	
+  fold_rec = calloc (N_SIMS * sizeof *fold_rec, sizeof *fold_rec);
+
+  for (i = 0; i<N_SIMS; ++i)
+    FENERGIES_TEMP[i] = FENERGIES[i];
+
+  iter=0;
+	
+
+  printf("\nStarting self-iterative algorithm on bootstrap data: \n");
+  while (deltaF>TOL_ITER) {
+#ifdef OPENMP
+#pragma omp parallel for private(j,i_HE,sumNum,sumDen,arg,k,argarray)
+#endif
+    for (i = 0; i<N_SIMS; ++i){
+      FENERGIES[i] = 0.;
+      for (j = 0; j<N_SIMS; ++j){
+	for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
+	  sumDen = 0.;
+	  arg    = -1e300;
+	  argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
+	  // Determine largest argument (overflow trick)
+	  for (k = 0; k<N_SIMS; ++k){
+	    argarray[k] = (BETAS[i]-BETAS[k])*B_HIST[j][i_HE]-FENERGIES_TEMP[k];
+	    // calculate max value
+	    if (argarray[k]>arg)
+	      arg=argarray[k];
+	  }
+	  // Now perform the calculation, by using the overflow trick
+	  for (k = 0; k<N_SIMS; ++k)
+	    sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	  sumNum = exp(-arg);
+	  FENERGIES[i] += sumNum/sumDen;
+	  free(argarray);
+	}
+      }
+      FENERGIES[i]      = log(FENERGIES[i]);
+      fold_rec[i]       = FENERGIES_TEMP[i];
+      FENERGIES_TEMP[i] = FENERGIES[i];
+    }
+    deltaF = 0.;
+    for (i = 0; i<N_SIMS; ++i )
+      deltaF += fabs(FENERGIES[i]-fold_rec[i]);
+    ++iter;
+    printf("%d \t delta : %e\n",iter,deltaF);
+
+  }
+
+  free(fold_rec);
+	
+}
+
+
+void b_entropy(int index)
+/* Calculate entropy of the bootstrap data
+ * argument: index -- index of the current bootstrap
+ */
+{
+  double energy, g_E;
+  int e_index;
+
+  B_ENTROPY[index] = calloc (EBINS * sizeof *ENTROPY, sizeof *ENTROPY);  
+
+  energy = EMIN+ESTEP/2.;
+  e_index = 0;
+  // DoS
+  printf("Calculating density of states for bootstrap data...\n");
+  while (energy<=EMAX+1e-8) {
+    b_densityofstates(energy,&g_E);    
+    // Write to B_ENTROPY variable
+    B_ENTROPY[index][e_index] = log(g_E);
+    
+    // update variables
+    energy  += ESTEP;
+    ++e_index;			
+  }		
+}
+
+
+void b_error()
+/* Calculate mean and standard deviation for every entropy point
+ */
+{
+  int i, e_index;
+  double energy;
+
+  for (i=0;i<2;++i)
+    B_ERROR[i] = calloc (EBINS * sizeof *B_ERROR, sizeof *B_ERROR);
+
+  energy = EMIN+ESTEP/2.;
+  e_index = 0;
+  while (energy<=EMAX+1e-8) {
+    // calculate mean
+    for (i=0;i<BSTRAP;++i) 
+      B_ERROR[0][e_index] += B_ENTROPY[i][e_index];
+    if (B_ERROR[0][e_index] > 0.)
+      B_ERROR[0][e_index] /= BSTRAP;
+    // calculate standard deviation
+    for (i=0;i<BSTRAP;++i) 
+      B_ERROR[1][e_index] += pow(B_ENTROPY[i][e_index]-B_ERROR[0][e_index],2);
+    if (B_ERROR[1][e_index] > 0.)
+      B_ERROR[1][e_index] /= BSTRAP;
+
+    energy += ESTEP;
+    ++e_index;
+  }
+}
+
+
+void write_b_file(void)
+/* Write entropy to file
+ */
+{
+  int e_index;
+  double energy;
+  FILE *file;
+
+  printf("Saving entropy + error to output file %s.\n",B_FILE);
+	
+  file = fopen(B_FILE, "wt");
+  if (file) {
+    energy = EMIN+ESTEP/2.;
+    e_index = 0;
+    fprintf(file,"E\tS(E)\terror(S(E))\n");
+    while (energy<=EMAX+1e-8) {
+      fprintf(file,"%f\t%f\t%f\n",energy,ENTROPY[e_index],B_ERROR[1][e_index]);
+      energy += ESTEP;
+      ++e_index;
+    }
+  } else 
+    fprintf(stderr,"Failed to output entropy to file %s.\n",
+	    B_FILE);		
+	
+  fclose(file);  
 }
 
 

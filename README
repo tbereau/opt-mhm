@@ -15,9 +15,9 @@ SOFTWARE INFORMATION :
           Carnegie Mellon University
           Pittsburgh, PA 15213 USA
 
-@date   : October 2009
+@date   : March 2010
 
-@version: 1.7
+@version: 1.8
 
 @license: GNU GENERAL PUBLIC LICENSE
           Please share feedback, bugs, code extensions to bereau@cmu.edu
@@ -154,6 +154,6 @@ BUGS/NOTES :
  * Order the simulations inside the metafile such that temperatures are
    numerically sorted. The algorithm assumes that neighboring simulations (as
    ordered in the metafile) have the largest overlap.
-
  
 
+ * Version 1.8: added bootstrap calculation for entropy.

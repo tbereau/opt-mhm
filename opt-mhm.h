@@ -34,12 +34,16 @@ extern double TMIN;
 extern double TMAX;
 extern double TSTEP;
 extern double ESTEP;
+extern int BSTRAP;
 extern int PARTIAL_Q_ID;
 extern double PARTIAL_Q_MIN;
 extern double PARTIAL_Q_MAX;
 extern int PARTIAL_Q_NUM;
 extern int COORD2_FLAG;
 extern int PARTIAL;
+extern int EBINS;
+extern double EMIN;
+extern double EMAX;
 
 extern double EPS;
 extern double PI;
@@ -53,6 +57,7 @@ extern char *TEMP_AVERAGE2;
 extern char *PARTIAL_FILE;
 extern char *MICRO_FILE;
 extern char *F_FILE;
+extern char *B_FILE;
 extern double *BETAS;
 extern int *START_SAMPLING;
 extern int *AUTOCOR_FACTOR;
@@ -65,6 +70,9 @@ extern double *FENERGIES;
 extern double *FENERGIES_TEMP; 
 extern double **PROB1;
 extern double **PROB2;
+extern double **B_HIST;
+extern double **B_ENTROPY;
+extern double **B_ERROR;
 
 
 #define LINESIZE 100
@@ -79,6 +87,12 @@ void calc_prob(void);
 void temp_averages(void);
 void microcanonical(void);
 void density_of_states(double E, double *g_E);
+void b_densityofstates(double E, double *g_E);
+void b_resample(void);
+void b_selfiterative(void);
+void b_entropy(int index);
+void b_error();
+void write_b_file(void);
 double halfinterval(int q, int i, int left);
 double fermi(int q, int i, double x, int left);
 double fermi_first(int i, double x, int inc_left, int q);
