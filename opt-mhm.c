@@ -1640,6 +1640,7 @@ void b_error()
       B_ERROR[1][e_index] += pow(B_ENTROPY[i][e_index]-B_ERROR[0][e_index],2);
     if (B_ERROR[1][e_index] < -1e-15 || B_ERROR[1][e_index] > 1e-15)
       B_ERROR[1][e_index] /= BSTRAP;
+    B_ERROR[1][e_index] = sqrt(B_ERROR[1][e_index]);
 
     energy += ESTEP;
     ++e_index;
