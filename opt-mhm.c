@@ -1662,7 +1662,7 @@ void write_b_file(void)
   if (file) {
     energy = EMIN+ESTEP/2.;
     e_index = 0;
-    fprintf(file,"E\tS(E)\terror(S(E))\n");
+    fprintf(file,"#E\tS(E)\terror(S(E))\n");
     while (energy<=EMAX+1e-8) {
       fprintf(file,"%f\t%f\t%f\n",energy,ENTROPY[e_index],B_ERROR[1][e_index]);
       energy += ESTEP;
