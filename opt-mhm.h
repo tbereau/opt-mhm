@@ -91,7 +91,7 @@ void b_densityofstates(double E, double *g_E);
 void b_resample(void);
 void b_selfiterative(void);
 void b_entropy(int index);
-void b_error();
+void b_error(void);
 void write_b_file(void);
 double halfinterval(int q, int i, int left);
 double fermi(int q, int i, double x, int left);
