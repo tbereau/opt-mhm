@@ -514,7 +514,7 @@ int main (int argc, char * const argv[])
     for (i=0;i<BSTRAP;++i)
       free(B_ENTROPY[i]);
     free(B_ENTROPY);
-    for (i=0;i<BSTRAP;++i)
+    for (i=0;i<1;++i)
       free(B_ERROR[i]);
     free(B_ERROR);
   }
@@ -1638,7 +1638,7 @@ void b_error()
     // calculate standard deviation
     for (i=0;i<BSTRAP;++i) 
       B_ERROR[1][e_index] += pow(B_ENTROPY[i][e_index]-B_ERROR[0][e_index],2);
-    if (B_ERROR[1][e_index] > 0.)
+    if (B_ERROR[1][e_index] < -1e-15 || B_ERROR[1][e_index] > 1e-15)
       B_ERROR[1][e_index] /= BSTRAP;
 
     energy += ESTEP;
