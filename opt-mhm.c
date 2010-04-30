@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <signal.h>
 
 #include "opt-mhm.h"
 
@@ -115,6 +116,8 @@ char *COMMAND_LINE = "options:\n\
  *
  */
 
+/* This flag controls termination of the main loop.  */
+volatile sig_atomic_t KEEP_GOING = 1;
 
 
 
@@ -801,7 +804,6 @@ void optimizedf()
 {
   double converg_rate, sumF;
   int iter=0, i, q, iter_q;
-
 	
   converg_rate=1.;
   sumF=0.;	
@@ -837,7 +839,22 @@ void optimizedf()
       ++iter;
       ++iter_q;		 
     }
-		
+
+    // Write free energies to file
+    FENERGIES[0]= 0.;
+    sumF=0;
+    for (i=0;i<N_SIMS-1;++i){
+      sumF += FENERGIES_TEMP[i];
+      FENERGIES[i+1] = sumF;
+      FENERGIES_TEMP[i]=FENERGIES[i];
+    }
+    writefenergies();		 
+    for (i=0;i<N_SIMS-1;++i)
+      FENERGIES[i]=FENERGIES_TEMP[i+1]-FENERGIES_TEMP[i];
+    for (i=0;i<N_SIMS-1;++i){
+      FENERGIES_TEMP[i]=FENERGIES[i];
+    }
+
   }
 	
 	
@@ -926,6 +943,13 @@ void writefenergies(void)
 }
 
 
+
+void sighandler(int sig)
+{
+  printf("\nSignal %d caught...\n",sig);
+  KEEP_GOING = 0;
+}
+
 void self_iterative(void)
 {
   double *fold_rec, *argarray, deltaF;
@@ -941,10 +965,14 @@ void self_iterative(void)
     FENERGIES_TEMP[i] = FENERGIES[i];
 
   iter=0;
-	
+
+  signal(SIGABRT, &sighandler);
+  signal(SIGTERM, &sighandler);
+  signal(SIGINT, &sighandler);
+
 
   printf("\nStarting self-iterative algorithm : \n");
-  while (deltaF>TOL_ITER) {
+  while (deltaF>TOL_ITER && KEEP_GOING==1) {
 #ifdef OPENMP
 #pragma omp parallel for private(j,i_HE,sumNum,sumDen,arg,k,argarray)
 #endif
@@ -1386,7 +1414,7 @@ void microcanonical(void)
     fprintf (file,"# Averages as a function of energy\n");
     fprintf (file,"# E\tDoS\tEntropy\tHertz entropy\tdS/dE\tC_v\n");
 
-    energy = EMIN+ESTEP/2.;
+    energy = EMIN;
     e_index = 0;
     // DoS
     printf("Calculating density of states...\n");
