@@ -808,7 +808,7 @@ void optimizedf()
   converg_rate=1.;
   sumF=0.;	
 	
-  printf("\nStarting optimized MHM algorithm : \n");
+  printf("\nStarting optimized MHM algorithm: \n");
 
   // IMPLEMENT EARLY EXIT CONDITION IF MORE NEIGHBORS (HIGHER Q) DON'T CONTRIBUTE.
   for (q=0;q<N_SIMS-1;++q) {
@@ -848,13 +848,15 @@ void optimizedf()
       FENERGIES[i+1] = sumF;
       FENERGIES_TEMP[i]=FENERGIES[i];
     }
+    FENERGIES_TEMP[N_SIMS-1]=FENERGIES[N_SIMS-1];
     writefenergies();		 
     for (i=0;i<N_SIMS-1;++i)
       FENERGIES[i]=FENERGIES_TEMP[i+1]-FENERGIES_TEMP[i];
     for (i=0;i<N_SIMS-1;++i){
       FENERGIES_TEMP[i]=FENERGIES[i];
     }
-
+    FENERGIES_TEMP[N_SIMS-1]=0;
+    FENERGIES[N_SIMS-1]=0;
   }
 	
 	
