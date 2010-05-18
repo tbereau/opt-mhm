@@ -81,6 +81,7 @@ void readinvtemp(char *file);
 void readfile(char *file,int sim, int set_hist_boundaries);
 int readfenergies(void);
 void writefenergies(void);
+void sighandler(int);
 void self_iterative(void);
 void optimizedf(void);
 void calc_prob(void);
