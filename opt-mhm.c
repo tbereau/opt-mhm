@@ -118,7 +118,7 @@ char *COMMAND_LINE = "options:\n\
 
 /* This flag controls termination of the main loop.  */
 volatile sig_atomic_t KEEP_GOING = 1;
-
+volatile sig_atomic_t CALCULATING_F = 0;
 
 
 
@@ -805,9 +805,13 @@ void optimizedf()
   double converg_rate, sumF;
   int iter=0, i, q, iter_q;
 	
+  // indicates that we're calculating free energies
+  CALCULATING_F = 1;
+
   converg_rate=1.;
   sumF=0.;	
 	
+
   printf("\nStarting optimized MHM algorithm: \n");
 
   // IMPLEMENT EARLY EXIT CONDITION IF MORE NEIGHBORS (HIGHER Q) DON'T CONTRIBUTE.
@@ -873,6 +877,8 @@ void optimizedf()
   }
   for (i=0;i<N_SIMS;++i)
     printf("f_%d:\t%lf\n",i+1,FENERGIES[i]);
+
+  CALCULATING_F = 0;
 }
 
 int readfenergies(void)
@@ -950,6 +956,9 @@ void sighandler(int sig)
 {
   printf("\nSignal %d caught...\n",sig);
   KEEP_GOING = 0;
+  // if not doing free energy calculating, exit
+  if (!CALCULATING_F)
+    exit(1);
 }
 
 void self_iterative(void)
@@ -960,6 +969,8 @@ void self_iterative(void)
 
   deltaF=1.;
 	
+  // indicates that we're in the middle of a free energy calculation
+  CALCULATING_F=1;
 	
   fold_rec = calloc (N_SIMS * sizeof *fold_rec, sizeof *fold_rec);
 
@@ -1017,7 +1028,8 @@ void self_iterative(void)
     printf("%d \t %f\n",i,FENERGIES[i]);	
 
   free(fold_rec);
-	
+
+  CALCULATING_F = 0;
 }
 
 
