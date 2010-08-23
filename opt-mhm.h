@@ -59,6 +59,8 @@ extern char *MICRO_FILE;
 extern char *F_FILE;
 extern char *B_FILE;
 extern double *BETAS;
+extern double *K_SPRING;
+extern double *X0_SPRING;
 extern int *START_SAMPLING;
 extern int *AUTOCOR_FACTOR;
 extern int *NORM_HIST;
@@ -77,14 +79,15 @@ extern double **B_ERROR;
 
 #define LINESIZE 100
 
-void readinvtemp(char *file);
+void readinvtemp(char *file, int umbrella_flag);
 void readfile(char *file,int sim, int set_hist_boundaries);
 int readfenergies(void);
 void writefenergies(void);
 void sighandler(int);
-void self_iterative(void);
+void self_iterative(int umbrella_flag);
 void optimizedf(void);
 void calc_prob(void);
+void calc_prob_umbrella(void);
 void temp_averages(void);
 void microcanonical(void);
 void density_of_states(double E, double *g_E);

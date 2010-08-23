@@ -39,6 +39,7 @@ int NUM_COORD1, NUM_COORD2, N_SIMS;
 double TEMP_PROB, TMIN, TMAX;
 char *META_FILE;
 double *BETAS, *FENERGIES, *FENERGIES_TEMP, *ENTROPY;
+double *K_SPRING, *X0_SPRING;
 int *NORM_HIST, *HIST_SIZES, *START_SAMPLING, *AUTOCOR_FACTOR;
 double **HIST, **COORD1, **COORD2, **PROB1, **PROB2;
 double **B_HIST, **B_ENTROPY, **B_ERROR; 
@@ -72,7 +73,7 @@ char *B_FILE        = "entropy_error.dat";
 char *init = "\n\
         Optimized Multiple Histogram Method\n\
           Tristan Bereau (bereau@cmu.edu)\n\
-                     2008-2009\n\
+                     2008-2010\n\
 \n\
 ";
 
@@ -104,15 +105,23 @@ char *COMMAND_LINE = "options:\n\
   -ts tstep                 temperature step in canonical calculations (default 0.01)\n\
   -u  coefficient           update coefficient for the SINH algorithm (0;1]. More is faster, but\n\
                             also less stable (default 0.5).\n\
+  -ub qbins qmin qmax temp  turns on umbrella potential + WHAM at temperature 'temp'.\n\
 ";
 
 
 /*
- * META_FILE is of the form
+ * META_FILE is of the form (except UMBRELLA):
  *
- * path/of/file1          temperature1          [time1 at which sampling starts]
- * path/of/file2          temperature2          [time2 at which sampling starts]
+ * path/of/file1          temperature1          [time1 at which sampling starts  [autocorrelation_time_1]]
+ * path/of/file2          temperature2          [time2 at which sampling starts  [autocorrelation_time_2]]
  * ...
+ *
+ *
+ * META_FILE for UMBRELLA, assuming a biasing potential of the form U=.5*k*(x-x0)**2:
+ *
+ * path/of/file1        k          x0          [time1 at which sampling starts  [autocorrelation_time_1]]
+ * path/of/file2        k          x0          [time2 at which sampling starts  [autocorrelation_time_2]]
+ *
  *
  */
 
@@ -127,7 +136,7 @@ int main (int argc, char * const argv[])
   time_t start_n, end_n;
   double dif_n, f_bar;
   int self_it, sinh_alg, tempbound;
-  int i, micro_flag, hremd_flag, b_index;
+  int i, micro_flag, hremd_flag, b_index, umbrella_flag;
 
   // By default: DI is off and SINH is on
   self_it=0; 
@@ -139,7 +148,7 @@ int main (int argc, char * const argv[])
   tempbound = 0;
   micro_flag = 0;
   hremd_flag = 0;
-	
+  umbrella_flag = 0;
 
   // output init output
   printf("%s\n",init);
@@ -293,6 +302,27 @@ int main (int argc, char * const argv[])
       hremd_flag = 1;
       ++i;			
     }
+    else if (strcmp(argv[i], "-ub") == 0) {
+      // Need 4 additional arguments
+      if (argc-i<5) {
+	fprintf(stderr,"Not enough arguments for option %s.\n",argv[i]);
+	exit(1);									
+      }
+      NUM_COORD1 = atoi(argv[i+1]);
+      COORD1_MIN = atof(argv[i+2]);
+      COORD1_MAX = atof(argv[i+3]);
+      TEMP_PROB  = atof(argv[i+4]);
+      if (NUM_COORD1 < 2) {
+	printf("The number of bins needs to be bigger than 1 (%d) for option %s.\n",NUM_COORD2, argv[i]);
+	exit(1);	   
+      }if (COORD1_MIN>COORD1_MAX){
+	fprintf(stderr,"qmin can't be bigger than qmax for option %s.\n",argv[i]);
+	exit(1);
+      }		   
+      COORD1_WIDTH = (COORD1_MAX - COORD1_MIN)/((double) NUM_COORD1);	
+      umbrella_flag = 1;
+      i+=4;				
+    }
     else if (strcmp(argv[i], "-mf") == 0){
       if (argc-i<2) {
 	fprintf(stderr,"Not enough arguments for option %s.\n",argv[i]);
@@ -340,8 +370,29 @@ int main (int argc, char * const argv[])
     exit(1);
   }
 	
-
-	
+  // Check incompatibilities between options
+  if (umbrella_flag) {
+    if (hremd_flag) {
+      fprintf(stderr,"Error. Can't use both Umbrella and HREMD.\n");
+      exit(1);
+    }
+    if (micro_flag || BSTRAP > 0) {
+      fprintf(stderr,"Error. Can't use both Umbrella and microcanonical.\n");
+      exit(1);
+    }
+    if (COORD1_FLAG) {
+      fprintf(stderr,"Error. Can't use Umbrella with an extra order parameter.\n");
+      exit(1);
+    }
+    if (COORD2_FLAG) {
+      fprintf(stderr,"Error. Can't use Umbrella with extra order parameters.\n");
+      exit(1);
+    }
+    if (self_it==0 || sinh_alg==1) {
+      fprintf(stderr,"Error. Only use Umbrella with Direct Iteration method.\n");
+      exit(1);
+    }
+  }
 
   if (PARTIAL){
     // Check that the second coordinate is defined
@@ -376,7 +427,7 @@ int main (int argc, char * const argv[])
    * Stores inverse temperatures in *BETAS and
    * load all histogram files.
    */
-  readinvtemp(META_FILE);
+  readinvtemp(META_FILE, umbrella_flag);
   
   /* If we're analyzing HREMD data, values of BETAS are actually coupling
    * parameters.  Subtract one from the coupling to get the contribution of
@@ -388,19 +439,26 @@ int main (int argc, char * const argv[])
       BETAS[i] = TEMP_PROB * (BETAS[i]-1.);    
   }
 
-  // Set Tmin and Tmax according to the lowest and highest simulations
-  // .. only if the user hasn't set them explicitly
-  if (!tempbound){
-    TMIN=1e30;
-    TMAX=-1e30;		
-    for (i=0; i<N_SIMS; ++i){
-      TMIN = min(TMIN,1./BETAS[i]);
-      TMAX = max(TMAX,1./BETAS[i]);
+  /* If we're using umbrella potentials, all sampled temperatures are the same
+     (haven't implemented a more general solution). Read from argument of -ub.
+   */
+  if (umbrella_flag) {
+    for (i=0; i<N_SIMS; ++i)
+      BETAS[i] = TEMP_PROB;    
+  } else {
+    // Set Tmin and Tmax according to the lowest and highest simulations
+    // .. only if the user hasn't set them explicitly
+    if (!tempbound){
+      TMIN=1e30;
+      TMAX=-1e30;		
+      for (i=0; i<N_SIMS; ++i){
+	TMIN = min(TMIN,1./BETAS[i]);
+	TMAX = max(TMAX,1./BETAS[i]);
+      }
     }
+    
+    printf("Temperature averages will be calculated in the range [%2.2f,%2.2f]\n",TMIN,TMAX);
   }
-	
-  printf("Temperature averages will be calculated in the range [%2.2f,%2.2f]\n",TMIN,TMAX);
-	
 
   // Initialize free energy arrays
   FENERGIES = calloc(N_SIMS * sizeof *FENERGIES, sizeof *FENERGIES);
@@ -425,7 +483,7 @@ int main (int argc, char * const argv[])
     optimizedf();
   // Self-iterative method (DI)
   if (self_it)
-    self_iterative();	
+    self_iterative(umbrella_flag);	
 
   time (&end_n);
 	
@@ -438,12 +496,16 @@ int main (int argc, char * const argv[])
 
   // Calculate WHAM probabilities if at least one order parameter has been set
   // Note that calc_prob() can handle 1 or 2 order parameters.
-  if (COORD1_FLAG)
-    calc_prob();
+  if (umbrella_flag)
+    calc_prob_umbrella();
+  else
+    if (COORD1_FLAG)
+      calc_prob();
 
 
-  // Calculate averages with respect to temperature--unless we're analyzing HREMD data
-  if (!hremd_flag)
+  /* Calculate averages with respect to temperature--unless we're analyzing
+     HREMD or UMBRELLA data */
+  if (!hremd_flag && !umbrella_flag)
     temp_averages();	
 
 
@@ -504,6 +566,10 @@ int main (int argc, char * const argv[])
       free(COORD2[i]);
     free(COORD2);
   }
+  if (umbrella_flag){
+    free(K_SPRING);
+    free(X0_SPRING);
+  }
 	
   for (i=0;i<N_SIMS;++i)
     free(HIST[i]);
@@ -531,13 +597,13 @@ int main (int argc, char * const argv[])
 
 
 // Read temperatures and convert to 1/T in BETAS array
-void readinvtemp(char *file)
+void readinvtemp(char *file, int umbrella_flag)
 {
   FILE *ffile;
   char *line;
   char path_i[LINESIZE];
   int i=0, vals, sampling_i, autocor_i;
-  double temp_i;
+  double temp_i, k_spring, x0_spring;
 
   // Create line.
   line = (char *) malloc(sizeof(char) * LINESIZE);
@@ -562,18 +628,31 @@ void readinvtemp(char *file)
   BETAS = NULL;
   START_SAMPLING = NULL;   
   AUTOCOR_FACTOR = NULL;   
+  if (umbrella_flag) {
+    K_SPRING  = NULL;
+    X0_SPRING = NULL;
+  }
 	
   line = fgets(line,LINESIZE,ffile);	
   while (line != NULL) {
     if (line[0] !=  '#') {
-      vals = sscanf(line,"%s %lf %d %d", path_i, &temp_i, &sampling_i,&autocor_i);
-      if (!(vals > 1 && vals < 5)) {
-	printf("failure reading %s : can't read (path, temp, [sampling_start, autocor_factor])\n", file);
-	exit(-1);				
+      if (!umbrella_flag) {
+	vals = sscanf(line,"%s %lf %d %d", path_i, &temp_i, &sampling_i,&autocor_i);
+	if (!(vals > 1 && vals < 5)) {
+	  printf("failure reading %s : can't read (path, temp, [sampling_start, autocor_factor])\n", file);
+	  exit(-1);
+	}
       }
-      if (vals < 3)		   	
+      else {
+	vals = sscanf(line,"%s %lf %lf %d %d", path_i, &k_spring, &x0_spring, &sampling_i, &autocor_i);
+	if (!(vals > 1 && vals < 6)) {
+	  printf("failure reading %s : can't read (path, k_spring, x0_spring, [sampling_start, autocor_factor])\n", file);
+	  exit(-1);
+	}
+      }
+      if (vals < 3+umbrella_flag)		   	
 	sampling_i = 0;
-      if (vals < 4)
+      if (vals < 4+umbrella_flag)
 	autocor_i = 0;				
 			
 			
@@ -586,7 +665,15 @@ void readinvtemp(char *file)
       HIST_SIZES[i] = 0;				
       // Store \beta=1/T (in units of k_B*T_r).
       // Note that the temperature is read and converted to 1/T
-      BETAS[i] = 1./temp_i;
+      if (!umbrella_flag)
+	BETAS[i] = 1./temp_i;
+      else {
+	K_SPRING     = (double*) realloc (K_SPRING,  (i+1)*sizeof(double));	
+	X0_SPRING    = (double*) realloc (X0_SPRING, (i+1)*sizeof(double));
+
+	K_SPRING[i]  = k_spring;
+	X0_SPRING[i] = x0_spring;
+      }
       // sampling starts at sampling_i
       START_SAMPLING[i] = sampling_i;
       // autocorrelation factor for simulation i
@@ -660,6 +747,9 @@ void readinvtemp(char *file)
 }
 
 
+/* Note that if we're performing umbrella sampling, we'll be reading a
+   two-column file with time and reaction coordinate value. Here we let the
+   function run as if we were reading time/energy. */
 
 void readfile(char *histo_file, int sim, int set_hist_boundaries)
 {
@@ -961,7 +1051,7 @@ void sighandler(int sig)
     exit(1);
 }
 
-void self_iterative(void)
+void self_iterative(int umbrella_flag)
 {
   double *fold_rec, *argarray, deltaF;
   double sumNum, sumDen, arg;	
@@ -985,42 +1075,87 @@ void self_iterative(void)
 
 
   printf("\nStarting self-iterative algorithm : \n");
-  while (deltaF>TOL_ITER && KEEP_GOING==1) {
+
+  if (!umbrella_flag) {
+    // No umbrella
+    while (deltaF>TOL_ITER && KEEP_GOING==1) {
 #ifdef OPENMP
 #pragma omp parallel for private(j,i_HE,sumNum,sumDen,arg,k,argarray)
 #endif
-    for (i = 0; i<N_SIMS; ++i){
-      FENERGIES[i] = 0.;
-      for (j = 0; j<N_SIMS; ++j){
-	for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
-	  sumDen = 0.;
-	  arg    = -1e300;
-	  argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
-	  // Determine largest argument (overflow trick)
-	  for (k = 0; k<N_SIMS; ++k){
-	    argarray[k] = (BETAS[i]-BETAS[k])*HIST[j][i_HE]-FENERGIES_TEMP[k];
-	    // calculate max value
-	    if (argarray[k]>arg)
-	      arg=argarray[k];
+      for (i = 0; i<N_SIMS; ++i){
+	FENERGIES[i] = 0.;
+	for (j = 0; j<N_SIMS; ++j){
+	  for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
+	    sumDen = 0.;
+	    arg    = -1e300;
+	    argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
+	    // Determine largest argument (overflow trick)
+	    for (k = 0; k<N_SIMS; ++k){
+	      argarray[k] = (BETAS[i]-BETAS[k])*HIST[j][i_HE]-FENERGIES_TEMP[k];
+	      // calculate max value
+	      if (argarray[k]>arg)
+		arg=argarray[k];
+	    }
+	    // Now perform the calculation, by using the overflow trick
+	    for (k = 0; k<N_SIMS; ++k)
+	      sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	    sumNum = exp(-arg);
+	    FENERGIES[i] += sumNum/sumDen;
+	    free(argarray);
 	  }
-	  // Now perform the calculation, by using the overflow trick
-	  for (k = 0; k<N_SIMS; ++k)
-	    sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
-	  sumNum = exp(-arg);
-	  FENERGIES[i] += sumNum/sumDen;
-	  free(argarray);
 	}
+	FENERGIES[i]      = log(FENERGIES[i]);
+	fold_rec[i]       = FENERGIES_TEMP[i];
+	FENERGIES_TEMP[i] = FENERGIES[i];
       }
-      FENERGIES[i]      = log(FENERGIES[i]);
-      fold_rec[i]       = FENERGIES_TEMP[i];
-      FENERGIES_TEMP[i] = FENERGIES[i];
-    }
-    deltaF = 0.;
-    for (i = 0; i<N_SIMS; ++i )
-      deltaF += fabs(FENERGIES[i]-fold_rec[i]);
-    ++iter;
-    printf("%d \t delta : %e\n",iter,deltaF);
+      deltaF = 0.;
+      for (i = 0; i<N_SIMS; ++i )
+	deltaF += fabs(FENERGIES[i]-fold_rec[i]);
+      ++iter;
+      printf("%d \t delta : %e\n",iter,deltaF);
 
+    }
+  } else {
+    // Umbrella potentials
+    while (deltaF>TOL_ITER && KEEP_GOING==1) {
+#ifdef OPENMP
+#pragma omp parallel for private(j,i_HE,sumNum,sumDen,arg,k,argarray)
+#endif
+      for (i = 0; i<N_SIMS; ++i){
+	FENERGIES[i] = 0.;
+	for (j = 0; j<N_SIMS; ++j){
+	  for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
+	    sumDen = 0.;
+	    arg    = -1e300;
+	    argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
+	    // Determine largest argument (overflow trick)
+	    for (k = 0; k<N_SIMS; ++k){
+	      argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(HIST[j][i_HE]-X0_SPRING[i],2)-
+				      .5*K_SPRING[k]*pow(HIST[j][i_HE]-X0_SPRING[k],2))-
+		FENERGIES_TEMP[k];
+	      // calculate max value
+	      if (argarray[k]>arg)
+		arg=argarray[k];
+	    }
+	    // Now perform the calculation, by using the overflow trick
+	    for (k = 0; k<N_SIMS; ++k)
+	      sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	    sumNum = exp(-arg);
+	    FENERGIES[i] += sumNum/sumDen;
+	    free(argarray);
+	  }
+	}
+	FENERGIES[i]      = log(FENERGIES[i]);
+	fold_rec[i]       = FENERGIES_TEMP[i];
+	FENERGIES_TEMP[i] = FENERGIES[i];
+      }
+      deltaF = 0.;
+      for (i = 0; i<N_SIMS; ++i )
+	deltaF += fabs(FENERGIES[i]-fold_rec[i]);
+      ++iter;
+      printf("%d \t delta : %e\n",iter,deltaF);
+
+    }
   }
 
   printf("\n");
@@ -1165,7 +1300,8 @@ void calc_prob(void)
 	    if (PROB1[t_count][i]<EPS)
 	      fprintf (file,"#%f\t%f\tinf\n",temp_index,COORD1_MIN + (i+.5)*COORD1_WIDTH);
 	    else
-	      fprintf (file,"%f\t%f\t%f\n",temp_index,COORD1_MIN + (i+.5)*COORD1_WIDTH,-temp_index*log(PROB1[t_count][i]/max_prob));
+	      fprintf (file,"%f\t%f\t%f\n",temp_index,COORD1_MIN + (i+.5)*COORD1_WIDTH,
+		       -temp_index*log(PROB1[t_count][i]/max_prob));
 	  }			
 	  fprintf (file,"\n");
 	  ++t_count;				
@@ -1266,6 +1402,69 @@ void calc_prob(void)
 	
 }
 
+/* stripped down version of calc_prob() in case we use umbrella potentials */
+void calc_prob_umbrella(){
+  int i, i_HE, k, m;
+  double *argarray, max_prob, bin_min, bin_max, sumDen, arg, sumNum;
+  FILE *file;   
+  printf("Calculating free energies as a function of the order parameter(s).\n");
+
+  PROB1    = calloc(1 * sizeof **PROB1, sizeof **PROB1);
+  PROB1[0] = calloc(NUM_COORD1 * sizeof *PROB1, sizeof *PROB1);
+
+  argarray = calloc(N_SIMS * sizeof *argarray, sizeof *argarray);
+  max_prob = 0.;
+
+  //output free energies
+  file = fopen(OUTPUT_FILE, "wt");
+  if (!COORD2_FLAG)
+    fprintf (file,"#Free energy profile as a function of order parameter\n");		
+  
+  for (m=0; m<NUM_COORD1; ++m) {
+    bin_min = COORD1_MIN +  m    * COORD1_WIDTH;
+    bin_max = COORD1_MIN + (m+1) * COORD1_WIDTH;
+    // initialize probability
+    PROB1[0][m] = 0.;
+    for (i=0; i < N_SIMS; ++i){
+      for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
+	// delta function only picks up data points inside bin
+	if (HIST[i][i_HE] >= bin_min && HIST[i][i_HE] < bin_max) {
+	  sumDen = 0.;
+	  arg = -1e300;
+	  for (k = 0; k<N_SIMS; ++k) {
+	    argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(HIST[i][i_HE]-X0_SPRING[i],2)-
+				    .5*K_SPRING[k]*pow(HIST[i][i_HE]-X0_SPRING[k],2))-
+	      FENERGIES_TEMP[k];
+	    if (argarray[k]>arg) 
+	      arg = argarray[k];
+	  }
+	  for (k = 0; k<N_SIMS; ++k) 
+	    sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	  sumNum = exp(-arg);
+	  PROB1[0][m] += sumNum / sumDen;
+	} 
+      }
+    }
+    if (PROB1[0][m] > max_prob)
+      max_prob = PROB1[0][m];
+  }
+
+  if (file){
+    for (i=0;i<NUM_COORD1;++i) {
+      if (PROB1[0][i]<EPS)       
+	fprintf (file,"#%f\tinf\n",COORD1_MIN + (i+.5)*COORD1_WIDTH);
+      else    
+	fprintf (file,"%f\t%f\n",COORD1_MIN + (i+.5)*COORD1_WIDTH,
+		 -TEMP_PROB*log(PROB1[0][i]/max_prob));
+    }
+  }
+  
+  fclose(file);
+  
+  free(PROB1[0]);
+  free(PROB1);
+  free(argarray);
+}
 
 
 void temp_averages(void)
