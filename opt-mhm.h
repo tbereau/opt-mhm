@@ -75,6 +75,7 @@ extern double **PROB2;
 extern double **B_HIST;
 extern double **B_ENTROPY;
 extern double **B_ERROR;
+extern double **B_PROB;
 
 
 #define LINESIZE 100
@@ -93,10 +94,11 @@ void microcanonical(void);
 void density_of_states(double E, double *g_E);
 void b_densityofstates(double E, double *g_E);
 void b_resample(void);
-void b_selfiterative(void);
+void b_selfiterative(int umbrella_flag);
 void b_entropy(int index);
-void b_error(void);
-void write_b_file(void);
+void b_umbrella(int index);
+void b_error(int umbrella_flag);
+void write_b_file(int umbrella_flag);
 double halfinterval(int q, int i, int left);
 double fermi(int q, int i, double x, int left);
 double fermi_first(int i, double x, int inc_left, int q);

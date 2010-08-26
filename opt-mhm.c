@@ -42,7 +42,7 @@ double *BETAS, *FENERGIES, *FENERGIES_TEMP, *ENTROPY;
 double *K_SPRING, *X0_SPRING;
 int *NORM_HIST, *HIST_SIZES, *START_SAMPLING, *AUTOCOR_FACTOR;
 double **HIST, **COORD1, **COORD2, **PROB1, **PROB2;
-double **B_HIST, **B_ENTROPY, **B_ERROR; 
+double **B_HIST, **B_ENTROPY, **B_ERROR, **B_PROB; 
 int COORD1_FLAG, COORD2_FLAG;
 int PARTIAL;
 int PARTIAL_Q_ID, PARTIAL_Q_NUM;
@@ -376,7 +376,7 @@ int main (int argc, char * const argv[])
       fprintf(stderr,"Error. Can't use both Umbrella and HREMD.\n");
       exit(1);
     }
-    if (micro_flag || BSTRAP > 0) {
+    if (micro_flag) {
       fprintf(stderr,"Error. Can't use both Umbrella and microcanonical.\n");
       exit(1);
     }
@@ -529,25 +529,33 @@ int main (int argc, char * const argv[])
   if (BSTRAP > 0) {
     srand(time(NULL));
     TOL_ITER     =     1e-4;
-    // initialize B_ENTROPY
-    B_ENTROPY = calloc(BSTRAP * sizeof *B_ENTROPY, sizeof *B_ENTROPY);
 
+    if (!umbrella_flag)
+      // initialize B_ENTROPY
+      B_ENTROPY = calloc(BSTRAP * sizeof *B_ENTROPY, sizeof *B_ENTROPY);
+    else
+      // initialize B_PROB
+      B_PROB = calloc(BSTRAP * sizeof *B_PROB, sizeof *B_PROB);
+    
     while (b_index < BSTRAP) {
       printf("Bootstrapping %d/%d...\n",b_index+1,BSTRAP);
       // resample data
       b_resample();
       // calculate free energies of each temperature using DI method
-      b_selfiterative();	
-      // calculate entropy
-      b_entropy(b_index);
+      b_selfiterative(umbrella_flag);	
+      if (!umbrella_flag) 
+	// calculate entropy
+	b_entropy(b_index);
+      else
+	// calculate umbrella
+	b_umbrella(b_index);
       ++b_index;
     }
     // Calculate mean and standard deviation
     B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
-    b_error();
-    // write entropy error to file
-    // file contains E vs S(E) vs error(S(E))
-    write_b_file();
+    b_error(umbrella_flag);
+    // write entropy error OR umbrella error to file
+    write_b_file(umbrella_flag);
   }
 
 	
@@ -580,9 +588,15 @@ int main (int argc, char * const argv[])
     for (i=0;i<N_SIMS;++i)
       free(B_HIST[i]);
     free(B_HIST);
-    for (i=0;i<BSTRAP;++i)
-      free(B_ENTROPY[i]);
-    free(B_ENTROPY);
+    if (!umbrella_flag){
+      for (i=0;i<BSTRAP;++i)
+	free(B_ENTROPY[i]);
+      free(B_ENTROPY);
+    } else {
+      for (i=0;i<BSTRAP;++i)
+	free(B_PROB[i]);
+      free(B_PROB);
+    }
     for (i=0;i<1;++i)
       free(B_ERROR[i]);
     free(B_ERROR);
@@ -1466,6 +1480,46 @@ void calc_prob_umbrella(){
   free(argarray);
 }
 
+/* bootstrap version of calc_prob_umbrella */
+void b_umbrella(int b_index){
+  int i, i_HE, k, m;
+  double *argarray, bin_min, bin_max, sumDen, arg, sumNum;
+  printf("Calculating free energies as a function of the order parameter(s).\n");
+
+  B_PROB[b_index] = calloc(NUM_COORD1 * sizeof *B_PROB, sizeof *B_PROB);
+
+  argarray = calloc(N_SIMS * sizeof *argarray, sizeof *argarray);
+
+  for (m=0; m<NUM_COORD1; ++m) {
+    bin_min = COORD1_MIN +  m    * COORD1_WIDTH;
+    bin_max = COORD1_MIN + (m+1) * COORD1_WIDTH;
+    // initialize probability
+    B_PROB[b_index][m] = 0.;
+    for (i=0; i < N_SIMS; ++i){
+      for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
+	// delta function only picks up data points inside bin
+	if (B_HIST[i][i_HE] >= bin_min && B_HIST[i][i_HE] < bin_max) {
+	  sumDen = 0.;
+	  arg = -1e300;
+	  for (k = 0; k<N_SIMS; ++k) {
+	    argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(B_HIST[i][i_HE]-X0_SPRING[i],2)-
+				    .5*K_SPRING[k]*pow(B_HIST[i][i_HE]-X0_SPRING[k],2))-
+	      FENERGIES_TEMP[k];
+	    if (argarray[k]>arg) 
+	      arg = argarray[k];
+	  }
+	  for (k = 0; k<N_SIMS; ++k) 
+	    sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	  sumNum = exp(-arg);
+	  B_PROB[b_index][m] += sumNum / sumDen;
+	} 
+      }
+    }
+  }
+
+  free(argarray);
+}
+
 
 void temp_averages(void)
 {
@@ -1769,7 +1823,7 @@ void b_resample(void)
 
 
 
-void b_selfiterative(void)
+void b_selfiterative(int umbrella_flag)
 /* DI method on the bootstrap data
  */
 {
@@ -1789,44 +1843,87 @@ void b_selfiterative(void)
 	
 
   printf("\nStarting self-iterative algorithm on bootstrap data: \n");
-  while (deltaF>TOL_ITER) {
+  if (!umbrella_flag) {
+    // no umbrella
+    while (deltaF>TOL_ITER) {
 #ifdef OPENMP
 #pragma omp parallel for private(j,i_HE,sumNum,sumDen,arg,k,argarray)
 #endif
-    for (i = 0; i<N_SIMS; ++i){
-      FENERGIES[i] = 0.;
-      for (j = 0; j<N_SIMS; ++j){
-	for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
-	  sumDen = 0.;
-	  arg    = -1e300;
-	  argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
-	  // Determine largest argument (overflow trick)
-	  for (k = 0; k<N_SIMS; ++k){
-	    argarray[k] = (BETAS[i]-BETAS[k])*B_HIST[j][i_HE]-FENERGIES_TEMP[k];
-	    // calculate max value
-	    if (argarray[k]>arg)
-	      arg=argarray[k];
+      for (i = 0; i<N_SIMS; ++i){
+	FENERGIES[i] = 0.;
+	for (j = 0; j<N_SIMS; ++j){
+	  for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
+	    sumDen = 0.;
+	    arg    = -1e300;
+	    argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
+	    // Determine largest argument (overflow trick)
+	    for (k = 0; k<N_SIMS; ++k){
+	      argarray[k] = (BETAS[i]-BETAS[k])*B_HIST[j][i_HE]-FENERGIES_TEMP[k];
+	      // calculate max value
+	      if (argarray[k]>arg)
+		arg=argarray[k];
+	    }
+	    // Now perform the calculation, by using the overflow trick
+	    for (k = 0; k<N_SIMS; ++k)
+	      sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	    sumNum = exp(-arg);
+	    FENERGIES[i] += sumNum/sumDen;
+	    free(argarray);
 	  }
-	  // Now perform the calculation, by using the overflow trick
-	  for (k = 0; k<N_SIMS; ++k)
-	    sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
-	  sumNum = exp(-arg);
-	  FENERGIES[i] += sumNum/sumDen;
-	  free(argarray);
 	}
+	FENERGIES[i]      = log(FENERGIES[i]);
+	fold_rec[i]       = FENERGIES_TEMP[i];
+	FENERGIES_TEMP[i] = FENERGIES[i];
       }
-      FENERGIES[i]      = log(FENERGIES[i]);
-      fold_rec[i]       = FENERGIES_TEMP[i];
-      FENERGIES_TEMP[i] = FENERGIES[i];
+      deltaF = 0.;
+      for (i = 0; i<N_SIMS; ++i )
+	deltaF += fabs(FENERGIES[i]-fold_rec[i]);
+      ++iter;
+      printf("%d \t delta : %e\n",iter,deltaF);
+
     }
-    deltaF = 0.;
-    for (i = 0; i<N_SIMS; ++i )
-      deltaF += fabs(FENERGIES[i]-fold_rec[i]);
-    ++iter;
-    printf("%d \t delta : %e\n",iter,deltaF);
-
+  } else {
+    // umbrella
+    while (deltaF>TOL_ITER && KEEP_GOING==1) {
+#ifdef OPENMP
+#pragma omp parallel for private(j,i_HE,sumNum,sumDen,arg,k,argarray)
+#endif
+      for (i = 0; i<N_SIMS; ++i){
+	FENERGIES[i] = 0.;
+	for (j = 0; j<N_SIMS; ++j){
+	  for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
+	    sumDen = 0.;
+	    arg    = -1e300;
+	    argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
+	    // Determine largest argument (overflow trick)
+	    for (k = 0; k<N_SIMS; ++k){
+	      argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(B_HIST[j][i_HE]-X0_SPRING[i],2)-
+				      .5*K_SPRING[k]*pow(B_HIST[j][i_HE]-X0_SPRING[k],2))-
+		FENERGIES_TEMP[k];
+	      // calculate max value
+	      if (argarray[k]>arg)
+		arg=argarray[k];
+	    }
+	    // Now perform the calculation, by using the overflow trick
+	    for (k = 0; k<N_SIMS; ++k)
+	      sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	    sumNum = exp(-arg);
+	    FENERGIES[i] += sumNum/sumDen;
+	    free(argarray);
+	  }
+	}
+	FENERGIES[i]      = log(FENERGIES[i]);
+	fold_rec[i]       = FENERGIES_TEMP[i];
+	FENERGIES_TEMP[i] = FENERGIES[i];
+      }
+      deltaF = 0.;
+      for (i = 0; i<N_SIMS; ++i )
+	deltaF += fabs(FENERGIES[i]-fold_rec[i]);
+      ++iter;
+      printf("%d \t delta : %e\n",iter,deltaF);
+      
+    }
   }
-
   free(fold_rec);
 	
 }
@@ -1858,59 +1955,94 @@ void b_entropy(int index)
 }
 
 
-void b_error()
-/* Calculate mean and standard deviation for every entropy point
+void b_error(int umbrella_flag)
+/* Calculate mean and standard deviation for every entropy or umbrella point
  */
 {
-  int i, e_index;
+  int i, e_index, rc_i;
   double energy;
 
-  for (i=0;i<2;++i)
-    B_ERROR[i] = calloc (EBINS * sizeof *B_ERROR, sizeof *B_ERROR);
-
-  energy = EMIN+ESTEP/2.;
-  e_index = 0;
-  while (energy<=EMAX+1e-8) {
-    // calculate mean
-    for (i=0;i<BSTRAP;++i) 
-      B_ERROR[0][e_index] += B_ENTROPY[i][e_index];
-    if (B_ERROR[0][e_index] > 0.)
-      B_ERROR[0][e_index] /= BSTRAP;
-    // calculate standard deviation
-    for (i=0;i<BSTRAP;++i) 
-      B_ERROR[1][e_index] += pow(B_ENTROPY[i][e_index]-B_ERROR[0][e_index],2);
-    if (B_ERROR[1][e_index] < -1e-15 || B_ERROR[1][e_index] > 1e-15)
-      B_ERROR[1][e_index] /= BSTRAP;
-    B_ERROR[1][e_index] = sqrt(B_ERROR[1][e_index]);
-
-    energy += ESTEP;
-    ++e_index;
-  }
-}
-
-
-void write_b_file(void)
-/* Write entropy to file
- */
-{
-  int e_index;
-  double energy;
-  FILE *file;
-
-  printf("Saving entropy + error to output file %s.\n",B_FILE);
-	
-  file = fopen(B_FILE, "wt");
-  if (file) {
+  if (!umbrella_flag) {
+    // entropy
+    for (i=0;i<2;++i)
+      B_ERROR[i] = calloc (EBINS * sizeof *B_ERROR, sizeof *B_ERROR);
+    
     energy = EMIN+ESTEP/2.;
     e_index = 0;
-    fprintf(file,"#E\tS(E)\terror(S(E))\n");
     while (energy<=EMAX+1e-8) {
-      fprintf(file,"%f\t%f\t%f\n",energy,ENTROPY[e_index],B_ERROR[1][e_index]);
+      // calculate mean
+      for (i=0;i<BSTRAP;++i) 
+	B_ERROR[0][e_index] += B_ENTROPY[i][e_index];
+      if (B_ERROR[0][e_index] > 0.)
+	B_ERROR[0][e_index] /= BSTRAP;
+      // calculate standard deviation
+      for (i=0;i<BSTRAP;++i) 
+	B_ERROR[1][e_index] += pow(B_ENTROPY[i][e_index]-B_ERROR[0][e_index],2);
+      if (B_ERROR[1][e_index] > 1e-15)
+	B_ERROR[1][e_index] /= BSTRAP;
+      B_ERROR[1][e_index] = sqrt(B_ERROR[1][e_index]);
+
       energy += ESTEP;
       ++e_index;
     }
+
+  }
+  else {
+    // umbrella
+    for (i=0;i<2;++i)
+      B_ERROR[i] = calloc (NUM_COORD1 * sizeof *B_ERROR, sizeof *B_ERROR);
+    
+    for (rc_i = 0; rc_i < NUM_COORD1; ++rc_i) {
+      // calculate mean
+      for (i=0;i<BSTRAP;++i) 
+	B_ERROR[0][rc_i] += B_PROB[i][rc_i];
+      if (B_ERROR[0][rc_i] > 0.)
+	B_ERROR[0][rc_i] /= BSTRAP;
+      // calculate standard deviation
+      for (i=0;i<BSTRAP;++i) 
+	B_ERROR[1][rc_i] += pow(B_PROB[i][rc_i]-B_ERROR[0][rc_i],2);
+      if (B_ERROR[1][rc_i] > 1e-15)
+	B_ERROR[1][rc_i] /= BSTRAP;
+      B_ERROR[1][rc_i] = sqrt(B_ERROR[1][rc_i]);
+
+    }
+  }
+
+}
+
+
+void write_b_file(int umbrella_flag)
+/* Write entropy or umbrella error to file
+ */
+{
+  int e_index, rc_i;
+  double energy;
+  FILE *file;
+
+  if (umbrella_flag)
+    printf("Saving umbrella prob + error to output file %s.\n",B_FILE);
+  else
+    printf("Saving entropy + error to output file %s.\n",B_FILE);
+	
+  file = fopen(B_FILE, "wt");
+  if (file) {
+    if (!umbrella_flag) {
+      energy = EMIN+ESTEP/2.;
+      e_index = 0;
+      fprintf(file,"#E\tS(E)\terror(S(E))\n");
+      while (energy<=EMAX+1e-8) {
+	fprintf(file,"%f\t%f\t%f\n",energy,ENTROPY[e_index],B_ERROR[1][e_index]);
+	energy += ESTEP;
+	++e_index;
+      }
+    } else {
+      fprintf(file,"#Reac.Coord\tPMF(RC)\terror(PMF(RC))\n");
+      for (rc_i=0; rc_i < NUM_COORD1; ++rc_i) 
+	fprintf(file,"%f\t%f\t%f\n",COORD1_MIN+(rc_i+.5)*COORD1_WIDTH,
+		B_ERROR[0][rc_i],B_ERROR[1][rc_i]);     
+    }
   } else 
-    fprintf(stderr,"Failed to output entropy to file %s.\n",
+    fprintf(stderr,"Failed to output bootstrap error to file %s.\n",
 	    B_FILE);		
 	
   fclose(file);  
