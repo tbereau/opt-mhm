@@ -56,7 +56,7 @@ double UPDATE_COEFF = 0.5;      /* Update coefficient of the SINH algorithm. A h
 				 * but also less stable... */
 int    MAXFERMI     = (int)1e5; // Maximum number of trials before claiming the function has no solution.
 double TOL_FERMI    =    1e-12; // Tolerance when solving fermi equation.
-double TOL_ITER     =     1e-9; // tolerance when converging free energies.
+double TOL_ITER     =     1e-5; // tolerance when converging free energies.
 double TSTEP        =     0.01; // Temperature step between WHAM averages
 double ESTEP        =       1.; // Energy step for microcanonical analysis
 int    BSTRAP       =        0; // Number of times to perform bootstrap on energy histograms
