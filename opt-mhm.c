@@ -66,7 +66,7 @@ char *TEMP_AVERAGE  = "avg_1.dat";
 char *TEMP_AVERAGE2 = "avg_2.dat";
 char *MICRO_FILE    = "micro.dat";
 char *F_FILE        = "free_energies.dat";
-char *B_FILE        = "entropy_error.dat";
+char *B_FILE        = "bootstrap_error.dat";
 
 
 // Init message
@@ -81,7 +81,7 @@ char *init = "\n\
 
 // Command line arguments
 char *COMMAND_LINE = "options:\n\
-  -b  number                bootstrap energy histograms 'number' times for entropy error analysis\n\
+  -b  number                bootstrap energy histograms 'number' times for bootstrap error analysis\n\
   -bf file                  output file name for the entropy error (default 'entropy_error.dat')\n\
   -d                        apply DI method *after* SINH (Bereau and Swendsen, J Comp Phys, 2009)\n\
   -do                       apply DI method ONLY (default is SINH only)\n\
