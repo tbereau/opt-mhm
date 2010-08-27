@@ -388,10 +388,6 @@ int main (int argc, char * const argv[])
       fprintf(stderr,"Error. Can't use Umbrella with extra order parameters.\n");
       exit(1);
     }
-    if (self_it==0 || sinh_alg==1) {
-      fprintf(stderr,"Error. Only use Umbrella with Direct Iteration method.\n");
-      exit(1);
-    }
   }
 
   if (PARTIAL){
@@ -480,7 +476,7 @@ int main (int argc, char * const argv[])
   time (&start_n);   
   // *** Optimized MHM algorithm - SINH ***
   if (sinh_alg)
-    optimizedf();
+    optimizedf(umbrella_flag);
   // Self-iterative method (DI)
   if (self_it)
     self_iterative(umbrella_flag);	
@@ -904,7 +900,7 @@ void readfile(char *histo_file, int sim, int set_hist_boundaries)
 
 
 
-void optimizedf()
+void optimizedf(int umbrella_flag)
 {
   double converg_rate, sumF;
   int iter=0, i, q, iter_q;
@@ -930,11 +926,11 @@ void optimizedf()
 #endif
       for (i=0;i<N_SIMS-1;++i){
 	if (iter==0 && q==0) {
-	  FENERGIES[i] = halfinterval(q,i,1);
+	  FENERGIES[i] = halfinterval(q,i,1,umbrella_flag);
 	} else {
 	  FENERGIES_TEMP[i] = FENERGIES[i];
 	  // weight the new solution in order to avoid unstability
-	  FENERGIES[i] = UPDATE_COEFF*halfinterval(q,i,1) + 
+	  FENERGIES[i] = UPDATE_COEFF*halfinterval(q,i,1,umbrella_flag) + 
 	    (1-UPDATE_COEFF)*FENERGIES_TEMP[i];
 	}
 	converg_rate += fabs(FENERGIES[i]-FENERGIES_TEMP[i]);
@@ -1144,8 +1140,10 @@ void self_iterative(int umbrella_flag)
 	    argarray = calloc (N_SIMS * sizeof *argarray, sizeof *argarray);
 	    // Determine largest argument (overflow trick)
 	    for (k = 0; k<N_SIMS; ++k){
-	      argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(HIST[j][i_HE]-X0_SPRING[i],2)-
-				      .5*K_SPRING[k]*pow(HIST[j][i_HE]-X0_SPRING[k],2))-
+	      argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(HIST[j][i_HE]
+							 -X0_SPRING[i],2)-
+				      .5*K_SPRING[k]*pow(HIST[j][i_HE]
+							 -X0_SPRING[k],2))-
 		FENERGIES_TEMP[k];
 	      // calculate max value
 	      if (argarray[k]>arg)
@@ -2055,21 +2053,21 @@ void write_b_file(int umbrella_flag)
 }
 
 
-double halfinterval(int q, int i, int left)
+double halfinterval(int q, int i, int left, int umbrella_flag)
 {
   double a, b, fa, fb, d, fd;
 	
   // Find initial conditions of false position method by using Bennett's equation
-  a=init_fermi(i, 1);
-  b=init_fermi(i, 0);
+  a=init_fermi(i, 1, umbrella_flag);
+  b=init_fermi(i, 0, umbrella_flag);
 
 
   // ***** False position Method
   do{
-    fa=fermi(q, i, a, left);
-    fb=fermi(q, i, b, left);
+    fa=fermi(q, i, a, left, umbrella_flag);
+    fb=fermi(q, i, b, left, umbrella_flag);
     d=(fb*a-fa*b)/(fb-fa);	   
-    fd=fermi(q, i, d, left);		
+    fd=fermi(q, i, d, left, umbrella_flag);		
     if (fa*fd>0)
       a=d;
     else
@@ -2081,7 +2079,7 @@ double halfinterval(int q, int i, int left)
 }
 
 
-double fermi(int q, int i, double x, int left)
+double fermi(int q, int i, double x, int left, int umbrella_flag)
 {
   double func;
   double dbel, dber, den, dbm;
@@ -2094,15 +2092,32 @@ double fermi(int q, int i, double x, int left)
   for (n=i-q;n<=i+1+q;++n){	
     if (n>=0 && n<N_SIMS){
       for (i_HE=0; i_HE<HIST_SIZES[n]; ++i_HE){
-	dbel=(BETAS[i]-BETAS[i+1])*HIST[n][i_HE];		
-	dber=(BETAS[i+1]-BETAS[i])*HIST[n][i_HE];		
+	if (umbrella_flag) {
+	  dbel= BETAS[i]*(.5*K_SPRING[i]*pow(HIST[n][i_HE]
+					     -X0_SPRING[i],2)-
+			  .5*K_SPRING[i+1]*pow(HIST[n][i_HE]
+					       -X0_SPRING[i+1],2));
+	  dber= BETAS[i]*(.5*K_SPRING[i+1]*pow(HIST[n][i_HE]
+					       -X0_SPRING[i+1],2)-
+			  .5*K_SPRING[i]*pow(HIST[n][i_HE]
+					     -X0_SPRING[i],2));
+	} else {
+	  dbel=(BETAS[i]-BETAS[i+1])*HIST[n][i_HE];		
+	  dber=(BETAS[i+1]-BETAS[i])*HIST[n][i_HE];		
+	}
 	den=1;
 	if (left){ // coming from the left
 	  den=NORM_HIST[i]+NORM_HIST[i+1]*exp(dbel-x);
 	  if (q>0){
 	    for (m=i-q;m<=i-1;++m){
 	      if (m>=0){
-		dbm=(BETAS[i]-BETAS[m])*HIST[n][i_HE];						
+		if (umbrella_flag)
+		  dbm=BETAS[i]*(.5*K_SPRING[i]*pow(HIST[n][i_HE]
+						   -X0_SPRING[i],2)-
+				.5*K_SPRING[m]*pow(HIST[n][i_HE]
+						     -X0_SPRING[m],2));
+		else
+		  dbm=(BETAS[i]-BETAS[m])*HIST[n][i_HE];
 		deltafk=0.;
 		for (k=m;k<=i-1;++k){
 		  deltafk+=FENERGIES[k];
@@ -2112,7 +2127,13 @@ double fermi(int q, int i, double x, int left)
 	    }
 	    for  (m=i+2;m<=i+1+q;++m){
 	      if (m<N_SIMS){
-		dbm=(BETAS[i]-BETAS[m])*HIST[n][i_HE];						
+		if (umbrella_flag)
+		  dbm=BETAS[i]*(.5*K_SPRING[i]*pow(HIST[n][i_HE]
+                                                   -X0_SPRING[i],2)-
+                                .5*K_SPRING[m]*pow(HIST[n][i_HE]
+						   -X0_SPRING[m],2));
+		else
+		  dbm=(BETAS[i]-BETAS[m])*HIST[n][i_HE];						
 		deltafk=0.;
 		for (k=i+1;k<=m-1;++k){
 		  deltafk+=FENERGIES[k];
@@ -2127,7 +2148,13 @@ double fermi(int q, int i, double x, int left)
 	  if (q>0){
 	    for (m=i-q;m<=i-1;++m){
 	      if (m>=0){
-		dbm=(BETAS[i+1]-BETAS[m])*HIST[n][i_HE];						
+		if (umbrella_flag)
+		  dbm=BETAS[i+1]*(.5*K_SPRING[i+1]*pow(HIST[n][i_HE]
+						       -X0_SPRING[i+1],2)-
+				  .5*K_SPRING[m]*pow(HIST[n][i_HE]
+						     -X0_SPRING[m],2));
+		else
+		  dbm=(BETAS[i+1]-BETAS[m])*HIST[n][i_HE];						
 		deltafk=0.;
 		for (k=m;k<=i-1;++k){
 		  deltafk+=FENERGIES[k];
@@ -2137,7 +2164,13 @@ double fermi(int q, int i, double x, int left)
 	    }
 	    for  (m=i+2;m<=i+1+q;++m){
 	      if (m<N_SIMS){
-		dbm=(BETAS[i+1]-BETAS[m])*HIST[n][i_HE];						
+		if (umbrella_flag)
+                  dbm=BETAS[i+1]*(.5*K_SPRING[i+1]*pow(HIST[n][i_HE]
+                                                       -X0_SPRING[i+1],2)-
+                                  .5*K_SPRING[m]*pow(HIST[n][i_HE]
+                                                     -X0_SPRING[m],2));
+                else
+		  dbm=(BETAS[i+1]-BETAS[m])*HIST[n][i_HE];						
 		deltafk=0.;
 		for (k=i+1;k<=m-1;++k){
 		  deltafk+=FENERGIES[k];
@@ -2157,7 +2190,7 @@ double fermi(int q, int i, double x, int left)
 
 
 
-double init_fermi(int i, int left)
+double init_fermi(int i, int left, int umbrella_flag)
 {
   int i_HE, j;	
   double func, den, arg;
@@ -2169,7 +2202,13 @@ double init_fermi(int i, int left)
   func=0.;	
 	
   for (i_HE=0;i_HE<HIST_SIZES[j];++i_HE){
-    arg=(BETAS[i]-BETAS[i+1])*HIST[j][i_HE];
+    if (umbrella_flag)
+      arg=BETAS[i]*(.5*K_SPRING[i]*pow(HIST[j][i_HE]
+				       -X0_SPRING[i],2)
+		    -.5*K_SPRING[i+1]*pow(HIST[j][i_HE]
+					  -X0_SPRING[i+1],2));
+    else
+      arg=(BETAS[i]-BETAS[i+1])*HIST[j][i_HE];
     den=NORM_HIST[j];		
     if (left)
       den*=exp(arg);

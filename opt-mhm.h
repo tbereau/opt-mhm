@@ -86,7 +86,7 @@ int readfenergies(void);
 void writefenergies(void);
 void sighandler(int);
 void self_iterative(int umbrella_flag);
-void optimizedf(void);
+void optimizedf(int umbrella_flag);
 void calc_prob(void);
 void calc_prob_umbrella(void);
 void temp_averages(void);
@@ -99,10 +99,9 @@ void b_entropy(int index);
 void b_umbrella(int index);
 void b_error(int umbrella_flag);
 void write_b_file(int umbrella_flag);
-double halfinterval(int q, int i, int left);
-double fermi(int q, int i, double x, int left);
-double fermi_first(int i, double x, int inc_left, int q);
-double init_fermi(int i, int inc_left);
+double halfinterval(int q, int i, int left, int umbrella_flag);
+double fermi(int q, int i, double x, int left, int umbrella_flag);
+double init_fermi(int i, int inc_left, int umbrella_flag);
 
 
 
