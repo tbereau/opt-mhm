@@ -56,7 +56,7 @@ double UPDATE_COEFF = 0.5;      /* Update coefficient of the SINH algorithm. A h
 				 * but also less stable... */
 int    MAXFERMI     = (int)1e5; // Maximum number of trials before claiming the function has no solution.
 double TOL_FERMI    =    1e-12; // Tolerance when solving fermi equation.
-double TOL_ITER     =     1e-5; // tolerance when converging free energies.
+double TOL_ITER     =     1e-4; // tolerance when converging free energies.
 double TSTEP        =     0.01; // Temperature step between WHAM averages
 double ESTEP        =       1.; // Energy step for microcanonical analysis
 int    BSTRAP       =        0; // Number of times to perform bootstrap on energy histograms
@@ -66,7 +66,7 @@ char *TEMP_AVERAGE  = "avg_1.dat";
 char *TEMP_AVERAGE2 = "avg_2.dat";
 char *MICRO_FILE    = "micro.dat";
 char *F_FILE        = "free_energies.dat";
-char *B_FILE        = "bootstrap_error.dat";
+char *B_FILE        = "entropy_error.dat";
 
 
 // Init message
@@ -81,7 +81,7 @@ char *init = "\n\
 
 // Command line arguments
 char *COMMAND_LINE = "options:\n\
-  -b  number                bootstrap energy histograms 'number' times for bootstrap error analysis\n\
+  -b  number                bootstrap energy histograms 'number' times for entropy error analysis\n\
   -bf file                  output file name for the entropy error (default 'entropy_error.dat')\n\
   -d                        apply DI method *after* SINH (Bereau and Swendsen, J Comp Phys, 2009)\n\
   -do                       apply DI method ONLY (default is SINH only)\n\
@@ -550,6 +550,9 @@ int main (int argc, char * const argv[])
 	// calculate umbrella
 	b_umbrella(b_index);
       ++b_index;
+      for (i=0;i<N_SIMS;++i)
+	  free(B_HIST[i]);
+      free(B_HIST);      
     }
     // Calculate mean and standard deviation
     B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
@@ -583,23 +586,20 @@ int main (int argc, char * const argv[])
     free(HIST[i]);
   free(HIST);	
   if (micro_flag)
-    free(ENTROPY);
+      free(ENTROPY);
   if (BSTRAP > 0) {
-    for (i=0;i<N_SIMS;++i)
-      free(B_HIST[i]);
-    free(B_HIST);
-    if (!umbrella_flag){
-      for (i=0;i<BSTRAP;++i)
-	free(B_ENTROPY[i]);
-      free(B_ENTROPY);
-    } else {
-      for (i=0;i<BSTRAP;++i)
-	free(B_PROB[i]);
-      free(B_PROB);
-    }
-    for (i=0;i<1;++i)
-      free(B_ERROR[i]);
-    free(B_ERROR);
+      if (!umbrella_flag){
+	  for (i=0;i<BSTRAP;++i)
+	      free(B_ENTROPY[i]);
+	  free(B_ENTROPY);
+      } else {
+	  for (i=0;i<BSTRAP;++i)
+	      free(B_PROB[i]);
+	  free(B_PROB);
+      }
+      for (i=0;i<1;++i)
+	  free(B_ERROR[i]);
+      free(B_ERROR);
   }
   
 
@@ -1483,12 +1483,13 @@ void calc_prob_umbrella(){
 /* bootstrap version of calc_prob_umbrella */
 void b_umbrella(int b_index){
   int i, i_HE, k, m;
-  double *argarray, bin_min, bin_max, sumDen, arg, sumNum;
+  double *argarray, bin_min, bin_max, sumDen, arg, sumNum, max_prob;
   printf("Calculating free energies as a function of the order parameter(s).\n");
 
   B_PROB[b_index] = calloc(NUM_COORD1 * sizeof *B_PROB, sizeof *B_PROB);
 
   argarray = calloc(N_SIMS * sizeof *argarray, sizeof *argarray);
+  max_prob = 0.;
 
   for (m=0; m<NUM_COORD1; ++m) {
     bin_min = COORD1_MIN +  m    * COORD1_WIDTH;
@@ -1515,7 +1516,12 @@ void b_umbrella(int b_index){
 	} 
       }
     }
+    if (B_PROB[b_index][m] > max_prob)
+      max_prob = B_PROB[b_index][m];
   }
+
+  for (m=0; m<NUM_COORD1; ++m)
+      B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
 
   free(argarray);
 }
