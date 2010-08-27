@@ -1,8 +1,8 @@
 /* Global variables and function prototypes for opt-mhm
  *
- * $Revision: 1.16 $
+ * $Revision: 2.0 $
  * $Author: tbereau $
- * $Date: 2009/06/05 17:40:19 $
+ * $Date: 2010/08/27 $
  */
 
 #include <stdio.h>
@@ -86,7 +86,7 @@ int readfenergies(void);
 void writefenergies(void);
 void sighandler(int);
 void self_iterative(int umbrella_flag);
-void optimizedf(int umbrella_flag);
+void optimizedf(int umbrella_flag, int bootstrapping);
 void calc_prob(void);
 void calc_prob_umbrella(void);
 void temp_averages(void);
@@ -99,9 +99,9 @@ void b_entropy(int index);
 void b_umbrella(int index);
 void b_error(int umbrella_flag);
 void write_b_file(int umbrella_flag);
-double halfinterval(int q, int i, int left, int umbrella_flag);
-double fermi(int q, int i, double x, int left, int umbrella_flag);
-double init_fermi(int i, int inc_left, int umbrella_flag);
+double halfinterval(int q, int i, int left, int umbrella_flag, int bootstrapping);
+double fermi(int q, int i, double x, int left, int umbrella_flag, int bootstrapping);
+double init_fermi(int i, int inc_left, int umbrella_flag, int bootstrapping);
 
 
 
