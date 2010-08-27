@@ -1447,7 +1447,7 @@ void calc_prob_umbrella(){
 	  for (k = 0; k<N_SIMS; ++k) {
 	    argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(HIST[i][i_HE]-X0_SPRING[i],2)-
 				    .5*K_SPRING[k]*pow(HIST[i][i_HE]-X0_SPRING[k],2))-
-	      FENERGIES_TEMP[k];
+	      FENERGIES[k];
 	    if (argarray[k]>arg) 
 	      arg = argarray[k];
 	  }
@@ -1504,7 +1504,7 @@ void b_umbrella(int b_index){
 	  for (k = 0; k<N_SIMS; ++k) {
 	    argarray[k] = BETAS[i]*(.5*K_SPRING[i]*pow(B_HIST[i][i_HE]-X0_SPRING[i],2)-
 				    .5*K_SPRING[k]*pow(B_HIST[i][i_HE]-X0_SPRING[k],2))-
-	      FENERGIES_TEMP[k];
+	      FENERGIES[k];
 	    if (argarray[k]>arg) 
 	      arg = argarray[k];
 	  }
