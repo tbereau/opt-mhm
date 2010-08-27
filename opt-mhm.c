@@ -967,7 +967,8 @@ void optimizedf(int umbrella_flag)
   /*
    * Transform free energy differences to free energies, and output.
    */
-	
+
+  sumF=0;
   printf("\nFinal Answers for reduced free energies :\n");
   FENERGIES[0]= 0.;	
   for (i=0;i<N_SIMS-1;++i){
