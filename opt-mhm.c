@@ -36,7 +36,7 @@
 double COORD1_MIN, COORD1_MAX, COORD1_WIDTH;
 double COORD2_MIN, COORD2_MAX, COORD2_WIDTH;
 int NUM_COORD1, NUM_COORD2, N_SIMS;
-double TEMP_PROB, TMIN, TMAX;
+double TMIN, TMAX;
 char *META_FILE;
 double *BETAS, *FENERGIES, *FENERGIES_TEMP, *ENTROPY;
 double *K_SPRING, *X0_SPRING;
@@ -51,8 +51,7 @@ int EBINS;
 double EMIN, EMAX;
 
 double EPS          =    1e-15;
-double PI           = 3.14159265358979323846;
-double UPDATE_COEFF = 0.5;      /* Update coefficient of the SINH algorithm. A higher value is faster,
+double UPDATE_COEFF =      0.5; /* Update coefficient of the SINH algorithm. A higher value is faster,
 				 * but also less stable... */
 int    MAXFERMI     = (int)1e5; // Maximum number of trials before claiming the function has no solution.
 double TOL_FERMI    =    1e-12; // Tolerance when solving fermi equation.
@@ -60,6 +59,7 @@ double TOL_ITER     =     1e-4; // tolerance when converging free energies.
 double TSTEP        =     0.01; // Temperature step between WHAM averages
 double ESTEP        =       1.; // Energy step for microcanonical analysis
 int    BSTRAP       =        0; // Number of times to perform bootstrap on energy histograms
+double TEMP_PROB    =      -1.; // Temperature at which we're analyzing the data
 char *PARTIAL_FILE  = "partial.dat";
 char *OUTPUT_FILE   = "f.profile.dat";
 char *TEMP_AVERAGE  = "avg_1.dat";
@@ -83,6 +83,7 @@ char *init = "\n\
 char *COMMAND_LINE = "options:\n\
   -b  number                bootstrap energy histograms 'number' times for entropy error analysis\n\
   -bf file                  output file name for the entropy error (default 'bootstrap_error.dat')\n\
+  -bt temp                  temperature at which bootstrap with one order parameter should be done\n\
   -d                        apply DI method *after* SINH (Bereau and Swendsen, J Comp Phys, 2009)\n\
   -do                       apply DI method ONLY (default is SINH only)\n\
   -e  energy_step           energy step for micro- and canonical analyses (default 1.)\n\
@@ -355,6 +356,14 @@ int main (int argc, char * const argv[])
       B_FILE = argv[i+1];
       ++i;
     }
+    else if (strcmp(argv[i], "-bt") == 0){
+      if (argc-i<2) {
+	fprintf(stderr,"Not enough arguments for option %s.\n",argv[i]);
+	exit(1);									
+      }
+      TEMP_PROB = atof(argv[i+1]);
+      ++i;
+    }
     else
       META_FILE = argv[i];			
   }
@@ -388,6 +397,14 @@ int main (int argc, char * const argv[])
       fprintf(stderr,"Error. Can't use Umbrella with extra order parameters.\n");
       exit(1);
     }
+  }
+  if (BSTRAP > 0 && COORD2_FLAG) {
+    fprintf(stderr,"Error. Can't use bootstrap and two order parameters.\n");
+    exit(1);
+  }
+  if (BSTRAP > 0 && !umbrella_flag && !micro_flag && TEMP_PROB<0) {
+    fprintf(stderr,"Error. Please set temperature at which bootstrap is performed (-bt).\n");
+    exit(1);
   }
 
   if (PARTIAL){
@@ -527,11 +544,11 @@ int main (int argc, char * const argv[])
     srand(time(NULL));
     TOL_ITER     =     1e-4;
 
-    if (!umbrella_flag)
+    if (micro_flag)
       // initialize B_ENTROPY
       B_ENTROPY = calloc(BSTRAP * sizeof *B_ENTROPY, sizeof *B_ENTROPY);
     else
-      // initialize B_PROB
+      // initialize B_PROB for umbrella or COORD1
       B_PROB = calloc(BSTRAP * sizeof *B_PROB, sizeof *B_PROB);
     
     while (b_index < BSTRAP) {
@@ -543,12 +560,19 @@ int main (int argc, char * const argv[])
       if (self_it)
 	// calculate free energies of each temperature using DI method
 	b_selfiterative(umbrella_flag);	
-      if (!umbrella_flag) 
-	// calculate entropy
-	b_entropy(b_index);
-      else
+      if (umbrella_flag) 
 	// calculate umbrella
 	b_umbrella(b_index);
+      else if (micro_flag)
+	// calculate entropy
+	b_entropy(b_index);
+      else if (COORD1_FLAG)
+	// calculate free energy of order parameter
+	b_coord1(b_index);
+      else {
+	printf("Bootstrapping must be used with either Umbrella, microcanonical, or one order parameter.\n");
+	exit(1);
+      }
       ++b_index;
       for (i=0;i<N_SIMS;++i)
 	  free(B_HIST[i]);
@@ -556,9 +580,9 @@ int main (int argc, char * const argv[])
     }
     // Calculate mean and standard deviation
     B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
-    b_error(umbrella_flag);
-    // write entropy error OR umbrella error to file
-    write_b_file(umbrella_flag);
+    b_error(micro_flag);
+    // write entropy error OR umbrella/order parameter error to file
+    write_b_file(micro_flag);
   }
 
 	
@@ -588,21 +612,21 @@ int main (int argc, char * const argv[])
   if (micro_flag)
       free(ENTROPY);
   if (BSTRAP > 0) {
-      if (!umbrella_flag){
-	  for (i=0;i<BSTRAP;++i)
-	      free(B_ENTROPY[i]);
-	  free(B_ENTROPY);
-      } else {
+      if (umbrella_flag || COORD1_FLAG){
 	  for (i=0;i<BSTRAP;++i)
 	      free(B_PROB[i]);
 	  free(B_PROB);
+      } else {
+	  for (i=0;i<BSTRAP;++i)
+	      free(B_ENTROPY[i]);
+	  free(B_ENTROPY);
       }
       for (i=0;i<1;++i)
 	  free(B_ERROR[i]);
       free(B_ERROR);
   }
   
-
+  
   printf("Operation successful.\n");   
 
   return 0;
@@ -1530,6 +1554,51 @@ void b_umbrella(int b_index){
 }
 
 
+/* bootstrap version of calc_prob */
+void b_coord1(int b_index){
+  int i, i_HE, k, m;
+  double *argarray, bin_min, bin_max, sumDen, arg, sumNum, max_prob;
+  printf("Calculating free energies as a function of the order parameter(s).\n");
+
+  B_PROB[b_index] = calloc(NUM_COORD1 * sizeof *B_PROB, sizeof *B_PROB);
+
+  argarray = calloc(N_SIMS * sizeof *argarray, sizeof *argarray);
+  max_prob = 0.;
+
+  for (m=0; m<NUM_COORD1; ++m) {
+    bin_min = COORD1_MIN +  m    * COORD1_WIDTH;
+    bin_max = COORD1_MIN + (m+1) * COORD1_WIDTH;
+    // initialize probability
+    B_PROB[b_index][m] = 0.;
+    for (i=0; i < N_SIMS; ++i){
+      for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
+	// delta function only picks up data points inside bin
+	if (COORD1[i][i_HE] >= bin_min && COORD1[i][i_HE] < bin_max) {
+	  sumDen = 0.;
+	  arg = -1e300;
+	  for (k = 0; k<N_SIMS; ++k) {
+	    argarray[k] = (1./TEMP_PROB-BETAS[k])*B_HIST[i][i_HE]-FENERGIES[k];
+	    if (argarray[k]>arg) 
+	      arg = argarray[k];
+	  }
+	  for (k = 0; k<N_SIMS; ++k) 
+	    sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
+	  sumNum = exp(-arg);
+	  B_PROB[b_index][m] += sumNum / sumDen;
+	} 
+      }
+    }
+    if (B_PROB[b_index][m] > max_prob)
+      max_prob = B_PROB[b_index][m];
+  }
+
+  for (m=0; m<NUM_COORD1; ++m)
+      B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
+
+  free(argarray);
+}
+
+
 void temp_averages(void)
 {
   double temp, entropy, spec_heat, spec_heat_old;
@@ -1964,14 +2033,14 @@ void b_entropy(int index)
 }
 
 
-void b_error(int umbrella_flag)
-/* Calculate mean and standard deviation for every entropy or umbrella point
+void b_error(int micro_flag)
+/* Calculate mean and standard deviation for every entropy or order parameter point
  */
 {
   int i, e_index, rc_i;
   double energy;
 
-  if (!umbrella_flag) {
+  if (micro_flag) {
     // entropy
     for (i=0;i<2;++i)
       B_ERROR[i] = calloc (EBINS * sizeof *B_ERROR, sizeof *B_ERROR);
@@ -1981,7 +2050,7 @@ void b_error(int umbrella_flag)
     while (energy<=EMAX+1e-8) {
       // calculate mean
       for (i=0;i<BSTRAP;++i) 
-	B_ERROR[0][e_index] += B_ENTROPY[i][e_index];
+	B_ERROR[0][e_index] += B_ENTROPY[i][e_index];      
       if (B_ERROR[0][e_index] > 0.)
 	B_ERROR[0][e_index] /= BSTRAP;
       // calculate standard deviation
@@ -1997,14 +2066,16 @@ void b_error(int umbrella_flag)
 
   }
   else {
-    // umbrella
+    // umbrella or order parameter
     for (i=0;i<2;++i)
       B_ERROR[i] = calloc (NUM_COORD1 * sizeof *B_ERROR, sizeof *B_ERROR);
     
     for (rc_i = 0; rc_i < NUM_COORD1; ++rc_i) {
       // calculate mean
-      for (i=0;i<BSTRAP;++i) 
-	B_ERROR[0][rc_i] += B_PROB[i][rc_i];
+      for (i=0;i<BSTRAP;++i) {
+	if (B_PROB[i][rc_i] < 1e300)
+	  B_ERROR[0][rc_i] += B_PROB[i][rc_i];	  	
+      }
       if (B_ERROR[0][rc_i] > 0.)
 	B_ERROR[0][rc_i] /= BSTRAP;
       // calculate standard deviation
@@ -2020,22 +2091,22 @@ void b_error(int umbrella_flag)
 }
 
 
-void write_b_file(int umbrella_flag)
-/* Write entropy or umbrella error to file
+void write_b_file(int microcanonical_flag)
+/* Write entropy or umbrella/order parameter error to file
  */
 {
   int e_index, rc_i;
   double energy;
   FILE *file;
 
-  if (umbrella_flag)
-    printf("Saving umbrella prob + error to output file %s.\n",B_FILE);
+  if (!microcanonical_flag)
+    printf("Saving order parameter prob + error to output file %s.\n",B_FILE);
   else
     printf("Saving entropy + error to output file %s.\n",B_FILE);
 	
   file = fopen(B_FILE, "wt");
   if (file) {
-    if (!umbrella_flag) {
+    if (microcanonical_flag) {
       energy = EMIN+ESTEP/2.;
       e_index = 0;
       fprintf(file,"#E\tS(E)\terror(S(E))\n");
@@ -2045,7 +2116,7 @@ void write_b_file(int umbrella_flag)
 	++e_index;
       }
     } else {
-      fprintf(file,"#Reac.Coord\tPMF(RC)\terror(PMF(RC))\n");
+      fprintf(file,"#Order.Param.\tPMF(OP)\terror(PMF(OP))\n");
       for (rc_i=0; rc_i < NUM_COORD1; ++rc_i) 
 	fprintf(file,"%f\t%f\t%f\n",COORD1_MIN+(rc_i+.5)*COORD1_WIDTH,
 		B_ERROR[0][rc_i],B_ERROR[1][rc_i]);     
