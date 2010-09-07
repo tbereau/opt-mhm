@@ -44,6 +44,7 @@ extern int PARTIAL;
 extern int EBINS;
 extern double EMIN;
 extern double EMAX;
+extern char PROBMAX_LETTER;
 
 extern double EPS;
 extern double PI;

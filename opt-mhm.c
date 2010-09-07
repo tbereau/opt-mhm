@@ -67,6 +67,7 @@ char *TEMP_AVERAGE2 = "avg_2.dat";
 char *MICRO_FILE    = "micro.dat";
 char *F_FILE        = "free_energies.dat";
 char *B_FILE        = "bootstrap_error.dat";
+char PROBMAX_LETTER = 'a';
 
 
 // Init message
@@ -101,6 +102,8 @@ char *COMMAND_LINE = "options:\n\
   -q1 qbins qmin qmax       add an order parameter Q1 with qbins bins in the range [qmin:qmax]\n\
   -q2 qbins qmin qmax temp  add an order parameter Q2 with qbins bins in the range [qmin:qmax]\n\
                             and calculate free energy profile at temperature temp\n\
+  -qm letter                defines free energy minimum as left (letter='l') or right ('r')\n\
+                            boundary of the PMF interval (only works in 1D).\n\
   -tb tmin tmax             temperature boundaries for canonical calculations [tmin:tmax]\n\
                             (default given by simulation temperature extrema)\n\
   -ts tstep                 temperature step in canonical calculations (default 0.01)\n\
@@ -150,6 +153,7 @@ int main (int argc, char * const argv[])
   micro_flag = 0;
   hremd_flag = 0;
   umbrella_flag = 0;
+  
 
   // output init output
   printf("%s\n",init);
@@ -229,6 +233,18 @@ int main (int argc, char * const argv[])
       COORD2_WIDTH = (COORD2_MAX - COORD2_MIN)/((double) NUM_COORD2);	
       COORD2_FLAG = 1;		
       i+=4;				
+    }
+    else if (strcmp(argv[i], "-qm") == 0){
+      if (argc-i<2) {
+	fprintf(stderr,"Not enough arguments for option %s.\n",argv[i]);
+	exit(1);									
+      }
+      PROBMAX_LETTER = argv[i+1][0];
+      if (PROBMAX_LETTER != 'l' && PROBMAX_LETTER != 'r') {
+	fprintf(stderr,"letter needs to be either 'l' or 'r'.\n");
+	exit(1);
+      }
+      ++i;			
     }
     else if (strcmp(argv[i], "-f") == 0){
       if (argc-i<2) {
@@ -1350,6 +1366,7 @@ void calc_prob(void)
       }
     }
   }
+
 	
 	
 	
@@ -1411,6 +1428,7 @@ void calc_prob(void)
 	max_prob = PROB1[0][m];
       printf ("%2.5f\t%2.5f\n",.5*(bin1_min+bin1_max),PROB1[0][m]);					
     }
+
     //output free energies for partial
     file = fopen(PARTIAL_FILE, "wt");
 		
@@ -1489,6 +1507,12 @@ void calc_prob_umbrella(){
     if (PROB1[0][m] > max_prob)
       max_prob = PROB1[0][m];
   }
+  /* If the user provided the -qm option, overrule max_prob value */
+  if (PROBMAX_LETTER == 'l')
+    max_prob = PROB1[0][0];
+  else if (PROBMAX_LETTER == 'r')
+    max_prob = PROB1[0][NUM_COORD1-1];
+
 
   if (file){
     for (i=0;i<NUM_COORD1;++i) {
@@ -1546,6 +1570,12 @@ void b_umbrella(int b_index){
     if (B_PROB[b_index][m] > max_prob)
       max_prob = B_PROB[b_index][m];
   }
+  /* If the user provided the -qm option, overrule max_prob value */
+  if (PROBMAX_LETTER == 'l')
+    max_prob = PROB1[0][0];
+  else if (PROBMAX_LETTER == 'r')
+    max_prob = PROB1[0][NUM_COORD1-1];
+  
 
   for (m=0; m<NUM_COORD1; ++m)
       B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
@@ -1591,7 +1621,12 @@ void b_coord1(int b_index){
     if (B_PROB[b_index][m] > max_prob)
       max_prob = B_PROB[b_index][m];
   }
-
+  /* If the user provided the -qm option, overrule max_prob value */
+  if (PROBMAX_LETTER == 'l')
+    max_prob = PROB1[0][0];
+  else if (PROBMAX_LETTER == 'r')
+    max_prob = PROB1[0][NUM_COORD1-1];
+  
   for (m=0; m<NUM_COORD1; ++m)
       B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
 
