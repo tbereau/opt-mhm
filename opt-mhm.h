@@ -77,6 +77,7 @@ extern double **B_HIST;
 extern double **B_ENTROPY;
 extern double **B_ERROR;
 extern double **B_PROB;
+extern double **B_COORD1;
 
 
 #define LINESIZE 100

@@ -42,7 +42,7 @@ double *BETAS, *FENERGIES, *FENERGIES_TEMP, *ENTROPY;
 double *K_SPRING, *X0_SPRING;
 int *NORM_HIST, *HIST_SIZES, *START_SAMPLING, *AUTOCOR_FACTOR;
 double **HIST, **COORD1, **COORD2, **PROB1, **PROB2;
-double **B_HIST, **B_ENTROPY, **B_ERROR, **B_PROB; 
+double **B_HIST, **B_ENTROPY, **B_ERROR, **B_PROB, **B_COORD1; 
 int COORD1_FLAG, COORD2_FLAG;
 int PARTIAL;
 int PARTIAL_Q_ID, PARTIAL_Q_NUM;
@@ -1338,6 +1338,9 @@ void calc_prob(void)
     }
     ++t_count;		
   }
+  for (i=0; i<NUM_COORD1; ++i)
+    printf("%d\t%f\n",i,PROB1[0][i]/max_prob);
+
 
   if (file) {
     if (COORD2_FLAG){
@@ -1603,7 +1606,7 @@ void b_coord1(int b_index){
     for (i=0; i < N_SIMS; ++i){
       for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
 	// delta function only picks up data points inside bin
-	if (COORD1[i][i_HE] >= bin_min && COORD1[i][i_HE] < bin_max) {
+	if (B_COORD1[i][i_HE] >= bin_min && B_COORD1[i][i_HE] < bin_max) {
 	  sumDen = 0.;
 	  arg = -1e300;
 	  for (k = 0; k<N_SIMS; ++k) {
@@ -1629,6 +1632,7 @@ void b_coord1(int b_index){
   
   for (m=0; m<NUM_COORD1; ++m)
       B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
+
 
   free(argarray);
 }
@@ -1920,16 +1924,22 @@ void b_resample(void)
 /* Resample each energy histograms to perform bootstrap analysis
  */
 {
-  int j, i_HE;
+  int j, i_HE, rdm_num;
 
   // Initialize B_HIST
   B_HIST   = calloc (N_SIMS * sizeof **B_HIST, sizeof **B_HIST);			
   for (j = 0; j < N_SIMS; ++j) 
     B_HIST[j]   = calloc(HIST_SIZES[j] * sizeof *B_HIST, sizeof *B_HIST);
+  // Initialize B_COORD1
+  B_COORD1 = calloc (N_SIMS * sizeof **B_COORD1, sizeof **B_COORD1);
+  for (j = 0; j < N_SIMS; ++j) 
+    B_COORD1[j]   = calloc(HIST_SIZES[j] * sizeof *B_COORD1, sizeof *B_COORD1);
   // Sample randomly
   for (j = 0; j<N_SIMS; ++j){
     for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
-      B_HIST[j][i_HE] = HIST[j][rand() % HIST_SIZES[j]];
+      rdm_num = rand() % HIST_SIZES[j];
+      B_HIST[j][i_HE] = HIST[j][rdm_num];
+      B_COORD1[j][i_HE] = COORD1[j][rdm_num];
     }
   }
 }
@@ -2038,7 +2048,6 @@ void b_selfiterative(int umbrella_flag)
     }
   }
   free(fold_rec);
-	
 }
 
 
