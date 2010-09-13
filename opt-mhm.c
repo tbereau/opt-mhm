@@ -1338,9 +1338,6 @@ void calc_prob(void)
     }
     ++t_count;		
   }
-  for (i=0; i<NUM_COORD1; ++i)
-    printf("%d\t%f\n",i,PROB1[0][i]/max_prob);
-
 
   if (file) {
     if (COORD2_FLAG){
