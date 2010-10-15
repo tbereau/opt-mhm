@@ -1928,15 +1928,25 @@ void b_resample(void)
   for (j = 0; j < N_SIMS; ++j) 
     B_HIST[j]   = calloc(HIST_SIZES[j] * sizeof *B_HIST, sizeof *B_HIST);
   // Initialize B_COORD1
-  B_COORD1 = calloc (N_SIMS * sizeof **B_COORD1, sizeof **B_COORD1);
-  for (j = 0; j < N_SIMS; ++j) 
-    B_COORD1[j]   = calloc(HIST_SIZES[j] * sizeof *B_COORD1, sizeof *B_COORD1);
+  if (COORD1_FLAG) {
+    B_COORD1 = calloc (N_SIMS * sizeof **B_COORD1, sizeof **B_COORD1);
+    for (j = 0; j < N_SIMS; ++j) 
+      B_COORD1[j]   = calloc(HIST_SIZES[j] * sizeof *B_COORD1, sizeof *B_COORD1);
+  }
   // Sample randomly
   for (j = 0; j<N_SIMS; ++j){
     for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
       rdm_num = rand() % HIST_SIZES[j];
       B_HIST[j][i_HE] = HIST[j][rdm_num];
       B_COORD1[j][i_HE] = COORD1[j][rdm_num];
+    }
+  }
+  if (COORD1_FLAG) {
+    for (j = 0; j<N_SIMS; ++j){
+      for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
+	rdm_num = rand() % HIST_SIZES[j];
+	B_COORD1[j][i_HE] = COORD1[j][rdm_num];	
+      }
     }
   }
 }
