@@ -1938,7 +1938,6 @@ void b_resample(void)
     for (i_HE = 0; i_HE<HIST_SIZES[j]; ++i_HE){
       rdm_num = rand() % HIST_SIZES[j];
       B_HIST[j][i_HE] = HIST[j][rdm_num];
-      B_COORD1[j][i_HE] = COORD1[j][rdm_num];
     }
   }
   if (COORD1_FLAG) {
