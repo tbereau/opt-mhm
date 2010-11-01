@@ -1570,15 +1570,16 @@ void b_umbrella(int b_index){
     if (B_PROB[b_index][m] > max_prob)
       max_prob = B_PROB[b_index][m];
   }
+
   /* If the user provided the -qm option, overrule max_prob value */
   if (PROBMAX_LETTER == 'l')
-    max_prob = PROB1[0][0];
+    max_prob = B_PROB[0][0];
   else if (PROBMAX_LETTER == 'r')
-    max_prob = PROB1[0][NUM_COORD1-1];
+    max_prob = B_PROB[0][NUM_COORD1-1];
   
 
   for (m=0; m<NUM_COORD1; ++m)
-      B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
+    B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
 
   free(argarray);
 }
@@ -1623,13 +1624,12 @@ void b_coord1(int b_index){
   }
   /* If the user provided the -qm option, overrule max_prob value */
   if (PROBMAX_LETTER == 'l')
-    max_prob = PROB1[0][0];
+    max_prob = B_PROB[0][0];
   else if (PROBMAX_LETTER == 'r')
-    max_prob = PROB1[0][NUM_COORD1-1];
+    max_prob = B_PROB[0][NUM_COORD1-1];
   
   for (m=0; m<NUM_COORD1; ++m)
-      B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
-
+    B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
 
   free(argarray);
 }
