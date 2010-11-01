@@ -1573,9 +1573,9 @@ void b_umbrella(int b_index){
 
   /* If the user provided the -qm option, overrule max_prob value */
   if (PROBMAX_LETTER == 'l')
-    max_prob = B_PROB[0][0];
+    max_prob = B_PROB[b_index][0];
   else if (PROBMAX_LETTER == 'r')
-    max_prob = B_PROB[0][NUM_COORD1-1];
+    max_prob = B_PROB[b_index][NUM_COORD1-1];
   
 
   for (m=0; m<NUM_COORD1; ++m)
@@ -1624,9 +1624,9 @@ void b_coord1(int b_index){
   }
   /* If the user provided the -qm option, overrule max_prob value */
   if (PROBMAX_LETTER == 'l')
-    max_prob = B_PROB[0][0];
+    max_prob = B_PROB[b_index][0];
   else if (PROBMAX_LETTER == 'r')
-    max_prob = B_PROB[0][NUM_COORD1-1];
+    max_prob = B_PROB[b_index][NUM_COORD1-1];
   
   for (m=0; m<NUM_COORD1; ++m)
     B_PROB[b_index][m] = -TEMP_PROB*log(B_PROB[b_index][m]/max_prob);
@@ -2101,7 +2101,7 @@ void b_error(int micro_flag)
       // calculate mean
       for (i=0;i<BSTRAP;++i) 
 	B_ERROR[0][e_index] += B_ENTROPY[i][e_index];      
-      if (B_ERROR[0][e_index] > 0.)
+      if (B_ERROR[0][e_index] > EPS)
 	B_ERROR[0][e_index] /= BSTRAP;
       // calculate standard deviation
       for (i=0;i<BSTRAP;++i) 
@@ -2126,7 +2126,7 @@ void b_error(int micro_flag)
 	if (B_PROB[i][rc_i] < 1e300)
 	  B_ERROR[0][rc_i] += B_PROB[i][rc_i];	  	
       }
-      if (B_ERROR[0][rc_i] > 0.)
+      if (fabs(B_ERROR[0][rc_i]) > 0.)
 	B_ERROR[0][rc_i] /= BSTRAP;
       // calculate standard deviation
       for (i=0;i<BSTRAP;++i) 
