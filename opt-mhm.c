@@ -625,13 +625,15 @@ int main (int argc, char * const argv[])
       free(B_HIST);      
     }
     // Calculate mean and standard deviation
-    B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
-    b_error(micro_flag);
-    for (i=0;i<1;++i)
-      free(B_ERROR[i]);
-    free(B_ERROR);
+    if (micro_flag || umbrella_flag) {
+      B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
+      b_error(micro_flag);
+      for (i=0;i<1;++i)
+	free(B_ERROR[i]);
+      free(B_ERROR);
+      write_b_file(micro_flag);
+    }
     // write entropy error OR umbrella/order parameter error to file
-    write_b_file(micro_flag);
     if (microavg_flag) {
       B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
       b_error(2);
@@ -2218,7 +2220,7 @@ void b_error(int micro_flag)
   int i, e_index, rc_i;
   double energy;
 
-  if (micro_flag) {
+  if (micro_flag==1) {
     // entropy
     for (i=0;i<2;++i)
       B_ERROR[i] = calloc (EBINS * sizeof *B_ERROR, sizeof *B_ERROR);
@@ -2245,7 +2247,6 @@ void b_error(int micro_flag)
   } else if (micro_flag == 2) {
     for (i=0;i<2;++i)
       B_ERROR[i] = calloc (EBINS * sizeof *B_ERROR, sizeof *B_ERROR);
-    
     energy = EMIN+ESTEP/2.;
     e_index = 0;
     while (energy<=EMAX+1e-8) {
