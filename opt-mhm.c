@@ -42,7 +42,7 @@ double *BETAS, *FENERGIES, *FENERGIES_TEMP, *ENTROPY;
 double *K_SPRING, *X0_SPRING;
 int *NORM_HIST, *HIST_SIZES, *START_SAMPLING, *AUTOCOR_FACTOR;
 double **HIST, **COORD1, **COORD2, **PROB1, **PROB2;
-double **B_HIST, **B_ENTROPY, **B_ERROR, **B_PROB, **B_COORD1; 
+double **B_HIST, **B_ENTROPY, **B_MICROAVG, **B_ERROR, **B_PROB, **B_COORD1; 
 int COORD1_FLAG, COORD2_FLAG;
 int PARTIAL;
 int PARTIAL_Q_ID, PARTIAL_Q_NUM;
@@ -65,6 +65,7 @@ char *OUTPUT_FILE   = "f.profile.dat";
 char *TEMP_AVERAGE  = "avg_1.dat";
 char *TEMP_AVERAGE2 = "avg_2.dat";
 char *MICRO_FILE    = "micro.dat";
+char *MICROAVG_FILE = "micro_coord1_avg.dat";
 char *F_FILE        = "free_energies.dat";
 char *B_FILE        = "bootstrap_error.dat";
 char PROBMAX_LETTER = 'a';
@@ -94,6 +95,8 @@ char *COMMAND_LINE = "options:\n\
   -ff file                  input/output file name for free energies (default 'free_energies.dat')\n\
   -hr temp                  analyse Hamiltonian Replica Exchange data at temperature 'temp'\n\
   -m                        turn on microcanonical analysis\n\
+  -ma                       turn on microcanonical average value of parameter Q1\n\
+  -mb file                  output file for microcanonical average of Q1 (default 'micro_coord1_avg.dat')\n\
   -mf file                  output file for microcanonical analysis (default 'micro.dat')\n\
   -p  qid qmin qmax         calculation of one order parameter with respect to the other\n\
                             (qid:'1' or '2') in the range [qmin:qmax].\n\
@@ -140,7 +143,7 @@ int main (int argc, char * const argv[])
   time_t start_n, end_n;
   double dif_n, f_bar;
   int self_it, sinh_alg, tempbound;
-  int i, micro_flag, hremd_flag, b_index, umbrella_flag;
+  int i, micro_flag, hremd_flag, b_index, umbrella_flag, microavg_flag;
 
   // By default: DI is off and SINH is on
   self_it=0; 
@@ -151,6 +154,7 @@ int main (int argc, char * const argv[])
   PARTIAL = 0;
   tempbound = 0;
   micro_flag = 0;
+  microavg_flag = 0;
   hremd_flag = 0;
   umbrella_flag = 0;
   
@@ -309,7 +313,9 @@ int main (int argc, char * const argv[])
       ++i;			
     }
     else if (strcmp(argv[i], "-m") == 0)
-      micro_flag = 1;			
+      micro_flag = 1;		
+    else if (strcmp(argv[i], "-ma") == 0)
+      microavg_flag = 1;
     else if (strcmp(argv[i], "-hr") == 0) {
       if (argc-i<2) {
 	fprintf(stderr,"Not enough arguments for option %s.\n",argv[i]);
@@ -346,6 +352,14 @@ int main (int argc, char * const argv[])
 	exit(1);									
       }
       MICRO_FILE = argv[i+1];
+      ++i;			
+    }
+    else if (strcmp(argv[i], "-mb") == 0){
+      if (argc-i<2) {
+	fprintf(stderr,"Not enough arguments for option %s.\n",argv[i]);
+	exit(1);									
+      }
+      MICROAVG_FILE = argv[i+1];
       ++i;			
     }
     else if (strcmp(argv[i], "-ff") == 0){
@@ -421,6 +435,11 @@ int main (int argc, char * const argv[])
   if (BSTRAP > 0 && !umbrella_flag && !micro_flag && TEMP_PROB<0) {
     fprintf(stderr,"Error. Please set temperature at which bootstrap is performed (-bt).\n");
     exit(1);
+  }
+
+  if (microavg_flag && !COORD1_FLAG) {
+      fprintf(stderr,"Error. '-ma' option requires order parameter Q1.\n");
+      exit(1);    
   }
 
   if (PARTIAL){
@@ -552,6 +571,10 @@ int main (int argc, char * const argv[])
   // microcanonical analysis (optional)
   if (micro_flag)
     microcanonical();
+
+  // microcanonical average (optional)
+  if (microavg_flag)
+    microavg();
   
 
   // bootstrapping
@@ -566,6 +589,9 @@ int main (int argc, char * const argv[])
     else
       // initialize B_PROB for umbrella or COORD1
       B_PROB = calloc(BSTRAP * sizeof *B_PROB, sizeof *B_PROB);
+
+    if (microavg_flag)
+      B_MICROAVG = calloc(BSTRAP * sizeof *B_MICROAVG, sizeof *B_MICROAVG);
     
     while (b_index < BSTRAP) {
       printf("Bootstrapping %d/%d...\n",b_index+1,BSTRAP);
@@ -579,10 +605,14 @@ int main (int argc, char * const argv[])
       if (umbrella_flag) 
 	// calculate umbrella
 	b_umbrella(b_index);
-      else if (micro_flag)
-	// calculate entropy
-	b_entropy(b_index);
-      else if (COORD1_FLAG)
+      else if (micro_flag || microavg_flag) {
+	if (micro_flag)
+	  // calculate entropy
+	  b_entropy(b_index);
+	if (microavg_flag)
+	  // calculate microcanonical average
+	  b_microavg(b_index);
+      } else if (COORD1_FLAG)
 	// calculate free energy of order parameter
 	b_coord1(b_index);
       else {
@@ -597,8 +627,17 @@ int main (int argc, char * const argv[])
     // Calculate mean and standard deviation
     B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
     b_error(micro_flag);
+    for (i=0;i<1;++i)
+      free(B_ERROR[i]);
+    free(B_ERROR);
     // write entropy error OR umbrella/order parameter error to file
     write_b_file(micro_flag);
+    if (microavg_flag) {
+      B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
+      b_error(2);
+      // write error to file
+      write_b_file(2);
+    }
   }
 
 	
@@ -1795,12 +1834,12 @@ void microcanonical(void)
     fprintf (file,"# Averages as a function of energy\n");
     fprintf (file,"# E\tDoS\tEntropy\tHertz entropy\tdS/dE\tC_v\n");
 
-    energy = EMIN;
+    energy = EMIN+ESTEP/2.;
     e_index = 0;
     // DoS
     printf("Calculating density of states...\n");
     while (energy<=EMAX+1e-8) {
-      density_of_states(energy,&g_E);
+      density_of_states(energy,&g_E,0);
 		    
       gE[e_index] = g_E;
 		    
@@ -1838,8 +1877,71 @@ void microcanonical(void)
 
 }
 
+void microavg(void)
+{
+  int i, i_HE, e_index;	
+  double energy;
+  double num, den;
+  double *avg;	
+  FILE *file;
 
-void density_of_states(double E, double *g_E)
+  file = fopen(MICROAVG_FILE, "wt");
+
+  printf("Performing microcanonical average on Q1; saving to '%s'.\n",MICROAVG_FILE);	
+
+
+  // Determine EMIN and EMAX from the histograms.
+  EMIN= 1e30;
+  EMAX=-1e30;		
+
+  for (i=0; i<N_SIMS; ++i){
+    for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
+      EMIN = min(EMIN,HIST[i][i_HE]);
+      EMAX = max(EMAX,HIST[i][i_HE]);
+    }
+  }
+  EBINS = 2+(int)((EMAX - EMIN)/ESTEP);	
+	
+  // initialize arrays
+  avg = calloc (EBINS * sizeof *avg, sizeof *avg);
+	
+  if (file) {
+    fprintf (file,"# Microcanonical average of order parameter\n");		
+    fprintf (file,"# Average as a function of energy\n");
+    fprintf (file,"# E\t<Q1>_E\n");
+
+    energy = EMIN+ESTEP/2.;
+    e_index = 0;
+    while (energy<=EMAX+1e-8) {
+      density_of_states(energy,&num,1);
+      density_of_states(energy,&den,0);
+
+      avg[e_index] = num/den;
+
+      // update variables
+      energy  += ESTEP;
+      ++e_index;			
+    }		
+
+    // write to file
+    energy = EMIN+ESTEP/2.;
+    e_index = 0;	   
+    while (energy<=EMAX+1e-8) {
+      fprintf(file, "%f \t %e\n",energy,avg[e_index]);
+      // update variables
+      energy  += ESTEP;
+      ++e_index;			
+    }
+
+    // close
+    fclose(file);
+  } else 
+    fprintf(stderr,"Warning: Can't open file %s.\n",MICROAVG_FILE);
+  
+}
+
+
+void density_of_states(double E, double *g_E, int include_coord1)
 /* Evaluate the density of states at energy E
  * where E is in [E-ESTEP/2;E+ESTEP/2]
  * Returns for a given E interval:
@@ -1870,14 +1972,17 @@ void density_of_states(double E, double *g_E)
 	sumNum = exp(-arg);				
 	for (k = 0; k<N_SIMS; ++k)
 	  sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
-	*g_E += sumNum/sumDen;				
+	if (include_coord1)
+	  *g_E += COORD1[i][i_HE] * sumNum/sumDen;
+	else
+	  *g_E += sumNum/sumDen;				
       }
     }
   }		
 }
 
 
-void b_densityofstates(double E, double *g_E)
+void b_densityofstates(double E, double *g_E, int include_coord1)
 /* Evaluate the density of states at energy E
  * for the bootstrap data
  * where E is in [E-ESTEP/2;E+ESTEP/2]
@@ -1909,7 +2014,10 @@ void b_densityofstates(double E, double *g_E)
 	sumNum = exp(-arg);				
 	for (k = 0; k<N_SIMS; ++k)
 	  sumDen += NORM_HIST[k]*exp(argarray[k]-arg);
-	*g_E += sumNum/sumDen;				
+	if (include_coord1)
+	  *g_E += B_COORD1[i][i_HE] * sumNum/sumDen;	  
+	else
+	  *g_E += sumNum/sumDen;				
       }
     }
   }		
@@ -2072,7 +2180,7 @@ void b_entropy(int index)
   // DoS
   printf("Calculating density of states for bootstrap data...\n");
   while (energy<=EMAX+1e-8) {
-    b_densityofstates(energy,&g_E);    
+    b_densityofstates(energy,&g_E,0);    
     // Write to B_ENTROPY variable
     B_ENTROPY[index][e_index] = log(g_E);
     
@@ -2082,6 +2190,26 @@ void b_entropy(int index)
   }		
 }
 
+void b_microavg(int index){
+  int e_index;	
+  double energy;
+  double num, den;
+
+  B_MICROAVG[index] = calloc (EBINS * sizeof *B_MICROAVG, sizeof *B_MICROAVG);  
+
+  energy = EMIN+ESTEP/2.;
+  e_index = 0;
+  while (energy<=EMAX+1e-8) {
+    density_of_states(energy,&num,1);
+    density_of_states(energy,&den,0);
+
+    B_MICROAVG[index][e_index] = num/den;
+
+    // update variables
+    energy  += ESTEP;
+    ++e_index;			
+  }		
+}
 
 void b_error(int micro_flag)
 /* Calculate mean and standard deviation for every entropy or order parameter point
@@ -2114,8 +2242,30 @@ void b_error(int micro_flag)
       ++e_index;
     }
 
-  }
-  else {
+  } else if (micro_flag == 2) {
+    for (i=0;i<2;++i)
+      B_ERROR[i] = calloc (EBINS * sizeof *B_ERROR, sizeof *B_ERROR);
+    
+    energy = EMIN+ESTEP/2.;
+    e_index = 0;
+    while (energy<=EMAX+1e-8) {
+      // calculate mean
+      for (i=0;i<BSTRAP;++i) 
+	B_ERROR[0][e_index] += B_MICROAVG[i][e_index];      
+      if (B_ERROR[0][e_index] > EPS)
+	B_ERROR[0][e_index] /= BSTRAP;
+      // calculate standard deviation
+      for (i=0;i<BSTRAP;++i) 
+	B_ERROR[1][e_index] += pow(B_MICROAVG[i][e_index]-B_ERROR[0][e_index],2);
+      if (B_ERROR[1][e_index] > 1e-15)
+	B_ERROR[1][e_index] /= BSTRAP;
+      B_ERROR[1][e_index] = sqrt(B_ERROR[1][e_index]);
+
+      energy += ESTEP;
+      ++e_index;
+    }    
+    
+  } else {
     // umbrella or order parameter
     for (i=0;i<2;++i)
       B_ERROR[i] = calloc (NUM_COORD1 * sizeof *B_ERROR, sizeof *B_ERROR);
@@ -2151,31 +2301,52 @@ void write_b_file(int microcanonical_flag)
 
   if (!microcanonical_flag)
     printf("Saving order parameter prob + error to output file %s.\n",B_FILE);
+  else if (microcanonical_flag == 2)
+    printf("Saving microcanonical order parameter average + error to output file %s.\n",MICROAVG_FILE);
   else
     printf("Saving entropy + error to output file %s.\n",B_FILE);
 	
-  file = fopen(B_FILE, "wt");
-  if (file) {
-    if (microcanonical_flag) {
+  if (microcanonical_flag == 2) {
+    file = fopen(MICROAVG_FILE, "wt");
+    if (file) {
       energy = EMIN+ESTEP/2.;
       e_index = 0;
-      fprintf(file,"#E\tS(E)\terror(S(E))\n");
+      fprintf(file,"#E\t<Q1>_E\terror(<Q1>_E)\n");
       while (energy<=EMAX+1e-8) {
-	fprintf(file,"%f\t%f\t%f\n",energy,ENTROPY[e_index],B_ERROR[1][e_index]);
+	fprintf(file,"%f\t%f\t%f\n",energy,B_ERROR[0][e_index],B_ERROR[1][e_index]);
 	energy += ESTEP;
 	++e_index;
       }
-    } else {
-      fprintf(file,"#Order.Param.\tPMF(OP)\terror(PMF(OP))\n");
-      for (rc_i=0; rc_i < NUM_COORD1; ++rc_i) 
-	fprintf(file,"%f\t%f\t%f\n",COORD1_MIN+(rc_i+.5)*COORD1_WIDTH,
-		B_ERROR[0][rc_i],B_ERROR[1][rc_i]);     
-    }
-  } else 
-    fprintf(stderr,"Failed to output bootstrap error to file %s.\n",
-	    B_FILE);		
-	
-  fclose(file);  
+    } else 
+      fprintf(stderr,"Failed to output bootstrap error to file %s.\n",
+	      MICROAVG_FILE);		
+    
+    fclose(file);  
+    
+  } else {
+    file = fopen(B_FILE, "wt");
+    if (file) {
+      if (microcanonical_flag) {
+	energy = EMIN+ESTEP/2.;
+	e_index = 0;
+	fprintf(file,"#E\tS(E)\terror(S(E))\n");
+	while (energy<=EMAX+1e-8) {
+	  fprintf(file,"%f\t%f\t%f\n",energy,ENTROPY[e_index],B_ERROR[1][e_index]);
+	  energy += ESTEP;
+	  ++e_index;
+	}
+      } else {
+	fprintf(file,"#Order.Param.\tPMF(OP)\terror(PMF(OP))\n");
+	for (rc_i=0; rc_i < NUM_COORD1; ++rc_i) 
+	  fprintf(file,"%f\t%f\t%f\n",COORD1_MIN+(rc_i+.5)*COORD1_WIDTH,
+		  B_ERROR[0][rc_i],B_ERROR[1][rc_i]);     
+      }
+    } else 
+      fprintf(stderr,"Failed to output bootstrap error to file %s.\n",
+	      B_FILE);		
+    
+    fclose(file);  
+  }
 }
 
 
