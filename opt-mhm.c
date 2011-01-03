@@ -626,6 +626,7 @@ int main (int argc, char * const argv[])
     }
     // Calculate mean and standard deviation
     if (micro_flag || umbrella_flag) {
+      printf("test1\n");
       B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
       b_error(micro_flag);
       for (i=0;i<1;++i)
@@ -635,14 +636,20 @@ int main (int argc, char * const argv[])
     }
     // write entropy error OR umbrella/order parameter error to file
     if (microavg_flag) {
+      printf("test2\n");
       B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
       b_error(2);
       // write error to file
       write_b_file(2);
     }
+    if (COORD1_FLAG) {
+      B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
+      b_error(3);
+      write_b_file(0);
+    }
   }
 
-	
+
   // Free stuff
   free(BETAS);
   free(FENERGIES);	
@@ -1576,7 +1583,7 @@ void calc_prob_umbrella(){
 void b_umbrella(int b_index){
   int i, i_HE, k, m;
   double *argarray, bin_min, bin_max, sumDen, arg, sumNum, max_prob;
-  printf("Calculating free energies as a function of the order parameter(s).\n");
+  printf("Calculating free energies as a function of the order parameter(s) -- umbrella.\n");
 
   B_PROB[b_index] = calloc(NUM_COORD1 * sizeof *B_PROB, sizeof *B_PROB);
 
