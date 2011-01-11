@@ -626,17 +626,15 @@ int main (int argc, char * const argv[])
     }
     // Calculate mean and standard deviation
     if (micro_flag || umbrella_flag) {
-      printf("test1\n");
       B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
       b_error(micro_flag);
-      for (i=0;i<1;++i)
-	free(B_ERROR[i]);
-      free(B_ERROR);
+/*       for (i=0;i<1;++i) */
+/* 	free(B_ERROR[i]); */
+/*       free(B_ERROR); */
       write_b_file(micro_flag);
     }
     // write entropy error OR umbrella/order parameter error to file
     if (microavg_flag) {
-      printf("test2\n");
       B_ERROR = calloc(2 * sizeof *B_ERROR, sizeof *B_ERROR);
       b_error(2);
       // write error to file
@@ -675,20 +673,20 @@ int main (int argc, char * const argv[])
   free(HIST);	
   if (micro_flag)
       free(ENTROPY);
-  if (BSTRAP > 0) {
-      if (umbrella_flag || COORD1_FLAG){
-	  for (i=0;i<BSTRAP;++i)
-	      free(B_PROB[i]);
-	  free(B_PROB);
-      } else {
-	  for (i=0;i<BSTRAP;++i)
-	      free(B_ENTROPY[i]);
-	  free(B_ENTROPY);
-      }
-      for (i=0;i<1;++i)
-	  free(B_ERROR[i]);
-      free(B_ERROR);
-  }
+/*   if (BSTRAP > 0) { */
+/*       if (umbrella_flag || COORD1_FLAG){ */
+/* 	  for (i=0;i<BSTRAP;++i) */
+/* 	      free(B_PROB[i]); */
+/* 	  free(B_PROB); */
+/*       } else { */
+/* 	  for (i=0;i<BSTRAP;++i) */
+/* 	      free(B_ENTROPY[i]); */
+/* 	  free(B_ENTROPY); */
+/*       } */
+/*       for (i=0;i<1;++i) */
+/* 	  free(B_ERROR[i]); */
+/*       free(B_ERROR); */
+/*   } */
   
   
   printf("Operation successful.\n");   
@@ -2277,7 +2275,7 @@ void b_error(int micro_flag)
     // umbrella or order parameter
     for (i=0;i<2;++i)
       B_ERROR[i] = calloc (NUM_COORD1 * sizeof *B_ERROR, sizeof *B_ERROR);
-    
+
     for (rc_i = 0; rc_i < NUM_COORD1; ++rc_i) {
       // calculate mean
       for (i=0;i<BSTRAP;++i) {
@@ -2292,7 +2290,7 @@ void b_error(int micro_flag)
       if (B_ERROR[1][rc_i] > 1e-15)
 	B_ERROR[1][rc_i] /= BSTRAP;
       B_ERROR[1][rc_i] = sqrt(B_ERROR[1][rc_i]);
-
+      
     }
   }
 
@@ -2345,9 +2343,9 @@ void write_b_file(int microcanonical_flag)
 	}
       } else {
 	fprintf(file,"#Order.Param.\tPMF(OP)\terror(PMF(OP))\n");
-	for (rc_i=0; rc_i < NUM_COORD1; ++rc_i) 
+	for (rc_i=0; rc_i < NUM_COORD1; ++rc_i)
 	  fprintf(file,"%f\t%f\t%f\n",COORD1_MIN+(rc_i+.5)*COORD1_WIDTH,
-		  B_ERROR[0][rc_i],B_ERROR[1][rc_i]);     
+		  B_ERROR[0][rc_i],B_ERROR[1][rc_i]);    
       }
     } else 
       fprintf(stderr,"Failed to output bootstrap error to file %s.\n",
