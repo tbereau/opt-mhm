@@ -2236,7 +2236,7 @@ void b_error(int micro_flag)
       // calculate mean
       for (i=0;i<BSTRAP;++i) 
 	B_ERROR[0][e_index] += B_ENTROPY[i][e_index];      
-      if (B_ERROR[0][e_index] > EPS)
+      if (fabs(B_ERROR[0][e_index]) > EPS)
 	B_ERROR[0][e_index] /= BSTRAP;
       // calculate standard deviation
       for (i=0;i<BSTRAP;++i) 
@@ -2258,7 +2258,7 @@ void b_error(int micro_flag)
       // calculate mean
       for (i=0;i<BSTRAP;++i) 
 	B_ERROR[0][e_index] += B_MICROAVG[i][e_index];      
-      if (B_ERROR[0][e_index] > EPS)
+      if (fabs(B_ERROR[0][e_index]) > EPS)
 	B_ERROR[0][e_index] /= BSTRAP;
       // calculate standard deviation
       for (i=0;i<BSTRAP;++i) 
