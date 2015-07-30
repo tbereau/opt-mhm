@@ -492,7 +492,7 @@ int main (int argc, char * const argv[])
    */
   if (umbrella_flag) {
     for (i=0; i<N_SIMS; ++i)
-      BETAS[i] = TEMP_PROB;
+      BETAS[i] = 1./TEMP_PROB;
   } else {
     // Set Tmin and Tmax according to the lowest and highest simulations
     // .. only if the user hasn't set them explicitly
@@ -566,8 +566,6 @@ int main (int argc, char * const argv[])
   for (i=0; i<N_SIMS; ++i)
     FENERGIES[i] -= f_bar;
 
-
-
   // microcanonical analysis (optional)
   if (micro_flag)
     microcanonical();
@@ -576,6 +574,8 @@ int main (int argc, char * const argv[])
   if (microavg_flag)
     microavg();
 
+  for (i=0; i<N_SIMS; ++i)
+    FENERGIES[i] += f_bar;
 
   // bootstrapping
   b_index = 0;
@@ -1418,6 +1418,7 @@ void calc_prob(void)
 
   fclose(file);
 
+
   // Now calculate partial probability
   if (PARTIAL){
     printf("\n Probability calculation of the partial Q region:\n");
@@ -1650,7 +1651,7 @@ void b_coord1(int b_index){
     for (i=0; i < N_SIMS; ++i){
       for (i_HE = 0; i_HE<HIST_SIZES[i]; ++i_HE){
         // delta function only picks up data points inside bin
-        if (B_COORD1[i][i_HE] >= bin_min && B_COORD1[i][i_HE] < bin_max) {
+        if (B_COORD1[i][i_HE] >= bin_min && B_COORD1[i][i_HE] <= bin_max) {
           sumDen = 0.;
           arg = -1e300;
           for (k = 0; k<N_SIMS; ++k) {
