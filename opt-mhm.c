@@ -549,7 +549,7 @@ int main (int argc, char * const argv[])
     calc_prob_umbrella();
   else
     if (COORD1_FLAG)
-      calc_prob();
+      calc_prob(hremd_flag);
 
 
   /* Calculate averages with respect to temperature--unless we're analyzing
@@ -614,7 +614,7 @@ int main (int argc, char * const argv[])
           b_microavg(b_index);
       } else if (COORD1_FLAG)
         // calculate free energy of order parameter
-        b_coord1(b_index);
+        b_coord1(b_index, hremd_flag);
       else {
         printf("Bootstrapping must be used with either Umbrella, microcanonical, or one order parameter.\n");
         exit(1);
@@ -1271,7 +1271,7 @@ void self_iterative(int umbrella_flag)
 }
 
 
-void calc_prob(void)
+void calc_prob(hremd_flag)
 {
   int m, n, i, j, i_HE, k, t_count;
   FILE *file;
@@ -1359,7 +1359,10 @@ void calc_prob(void)
               sumDen = 0.;
               arg = -1e300;
               for (k = 0; k<N_SIMS; ++k){
-                argarray[k] = (1./temp_index-BETAS[k])*HIST[i][i_HE]-FENERGIES[k];
+                if (hremd_flag)
+                  argarray[k] = 1./temp_index*(BETAS[i]-BETAS[k])*HIST[i][i_HE]-FENERGIES[k];
+                else
+                  argarray[k] = (1./temp_index-BETAS[k])*HIST[i][i_HE]-FENERGIES[k];
                 // calculate max value
                 if (argarray[k]>arg)
                   arg = argarray[k];
@@ -1633,7 +1636,7 @@ void b_umbrella(int b_index){
 
 
 /* bootstrap version of calc_prob */
-void b_coord1(int b_index){
+void b_coord1(int b_index, int hremd_flag){
   int i, i_HE, k, m;
   double *argarray, bin_min, bin_max, sumDen, arg, sumNum, max_prob;
   printf("Calculating free energies as a function of the order parameter(s).\n");
@@ -1655,7 +1658,10 @@ void b_coord1(int b_index){
           sumDen = 0.;
           arg = -1e300;
           for (k = 0; k<N_SIMS; ++k) {
-            argarray[k] = (1./TEMP_PROB-BETAS[k])*B_HIST[i][i_HE]-FENERGIES[k];
+            if (hremd_flag)
+              argarray[k] = 1./TEMP_PROB*(BETAS[i]-BETAS[k])*B_HIST[i][i_HE]-FENERGIES[k];
+            else
+              argarray[k] = (1./TEMP_PROB-BETAS[k])*B_HIST[i][i_HE]-FENERGIES[k];
             if (argarray[k]>arg)
               arg = argarray[k];
           }

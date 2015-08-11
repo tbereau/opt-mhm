@@ -71,7 +71,7 @@ extern double **HIST;
 extern double **COORD1;
 extern double **COORD2;
 extern double *FENERGIES;
-extern double *FENERGIES_TEMP; 
+extern double *FENERGIES_TEMP;
 extern double **PROB1;
 extern double **PROB2;
 extern double **B_HIST;
@@ -92,7 +92,7 @@ void writefenergies(void);
 void sighandler(int);
 void self_iterative(int umbrella_flag);
 void optimizedf(int umbrella_flag, int bootstrapping);
-void calc_prob(void);
+void calc_prob(int hremd_flag);
 void calc_prob_umbrella(void);
 void temp_averages(void);
 void microcanonical(void);
@@ -104,15 +104,9 @@ void b_selfiterative(int umbrella_flag);
 void b_entropy(int index);
 void b_microavg(int index);
 void b_umbrella(int index);
-void b_coord1(int index);
+void b_coord1(int index, int hremd_flag);
 void b_error(int microcanonical_flag);
 void write_b_file(int microcanonical_flag);
 double halfinterval(int q, int i, int left, int umbrella_flag, int bootstrapping);
 double fermi(int q, int i, double x, int left, int umbrella_flag, int bootstrapping);
 double init_fermi(int i, int inc_left, int umbrella_flag, int bootstrapping);
-
-
-
-
-
-
