@@ -54,8 +54,8 @@ double EPS          =    1e-15;
 double UPDATE_COEFF =      0.5; /* Update coefficient of the SINH algorithm. A higher value is faster,
                                  * but also less stable... */
 int    MAXFERMI     = (int)1e5; // Maximum number of trials before claiming the function has no solution.
-double TOL_FERMI    =    1e-12; // Tolerance when solving fermi equation.
-double TOL_ITER     =     1e-4; // tolerance when converging free energies.
+double TOL_FERMI    =    1e-10; // Tolerance when solving fermi equation.
+double TOL_ITER     =     1e-3; // tolerance when converging free energies.
 double TSTEP        =     0.01; // Temperature step between WHAM averages
 double ESTEP        =       1.; // Energy step for microcanonical analysis
 int    BSTRAP       =        0; // Number of times to perform bootstrap on energy histograms
@@ -735,11 +735,13 @@ void readinvtemp(char *file, int umbrella_flag)
 
   line = fgets(line,LINESIZE,ffile);
   while (line != NULL) {
-    if (line[0] !=  '#') {
+    if (line[0] !=  '#' && line[0] != '@') {
       if (!umbrella_flag) {
         vals = sscanf(line,"%s %lf %d %d", path_i, &temp_i, &sampling_i,&autocor_i);
         if (!(vals > 1 && vals < 5)) {
           printf("failure reading %s : can't read (path, temp, [sampling_start, autocor_factor])\n", file);
+          printf("Read %d column(s):\n", vals);
+          printf("%s\n",path_i);
           exit(-1);
         }
       }
@@ -818,7 +820,7 @@ void readinvtemp(char *file, int umbrella_flag)
     }
   line = fgets(line,LINESIZE,ffile);
   while (line != NULL) {
-    if (line[0] !=  '#') {
+    if (line[0] !=  '#' && line[0] != '@') {
       vals = sscanf(line,"%s %lf", path_i, &temp_i);
       if (vals > 2) {
         printf("failure reading %s : can't read (path temp)\n", file);
@@ -917,7 +919,7 @@ void readfile(char *histo_file, int sim, int set_hist_boundaries)
 
   while (line != NULL)
     {
-      if (line[0] != '#')
+      if (line[0] != '#' && line[0] != '@')
         {
           /* Read file of the form :
              time energy
@@ -1097,7 +1099,7 @@ int readfenergies(void)
 
   line = fgets(line,LINESIZE,file);
   while (line != NULL){
-    if (line[0] != '#'){
+    if (line[0] != '#' && line[0] != '@'){
       vals=sscanf(line,"%lf",&value);
       if (vals!=1){
         printf("failure reading %s.\n",F_FILE);

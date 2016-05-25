@@ -83,7 +83,7 @@ extern double **B_PROB;
 extern double **B_COORD1;
 
 
-#define LINESIZE 100
+#define LINESIZE 200
 
 void readinvtemp(char *file, int umbrella_flag);
 void readfile(char *file,int sim, int set_hist_boundaries);
