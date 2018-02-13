@@ -581,7 +581,7 @@ int main (int argc, char * const argv[])
   b_index = 0;
   if (BSTRAP > 0) {
     srand(time(NULL));
-    TOL_ITER     =     1e-4;
+    /* TOL_ITER     =     1e-4; */
 
     if (micro_flag)
       // initialize B_ENTROPY
@@ -1215,7 +1215,8 @@ void self_iterative(int umbrella_flag)
       for (i = 0; i<N_SIMS; ++i )
         deltaF += fabs(FENERGIES[i]-fold_rec[i]);
       ++iter;
-      printf("%d \t delta : %e\n",iter,deltaF);
+      if (iter%10 == 0)
+        printf("%d \t delta : %e\n",iter,deltaF);
 
     }
   } else {
@@ -1258,7 +1259,8 @@ void self_iterative(int umbrella_flag)
       for (i = 0; i<N_SIMS; ++i )
         deltaF += fabs(FENERGIES[i]-fold_rec[i]);
       ++iter;
-      printf("%d \t delta : %e\n",iter,deltaF);
+      if (iter%10 == 0)
+        printf("%d \t delta : %e\n",iter,deltaF);
 
     }
   }
@@ -2132,7 +2134,8 @@ void b_selfiterative(int umbrella_flag)
       for (i = 0; i<N_SIMS; ++i )
         deltaF += fabs(FENERGIES[i]-fold_rec[i]);
       ++iter;
-      printf("%d \t delta : %e\n",iter,deltaF);
+      if (iter%10 == 0)
+        printf("%d \t delta : %e\n",iter,deltaF);
 
     }
   } else {
@@ -2173,7 +2176,8 @@ void b_selfiterative(int umbrella_flag)
       for (i = 0; i<N_SIMS; ++i )
         deltaF += fabs(FENERGIES[i]-fold_rec[i]);
       ++iter;
-      printf("%d \t delta : %e\n",iter,deltaF);
+      if (iter%10 == 0)
+        printf("%d \t delta : %e\n",iter,deltaF);
 
     }
   }

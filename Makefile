@@ -1,13 +1,13 @@
 CC=gcc
-#CC_MP=icc -openmp -lm -wd981 -DOPENMP=1
-CC_MP=gcc -fopenmp -lm -DOPENMP=1
+CC_MP=icc -openmp -lm -wd981 -DOPENMP=1
+# CC_MP=gcc -fopenmp -lm -DOPENMP=1
 CFLAGS=-c -Wall -O3
 LINKER=-lm
 
 # For a serial version of the code, type 'make serial'.
 # For a threaded version, type 'make openmp'.
 # Right now, the serial version uses g++ and the threaded version
-# icpc, but one can try other combinations... 
+# icpc, but one can try other combinations...
 
 all: serial openmp
 
@@ -25,4 +25,3 @@ opt-mhm_mp.o: opt-mhm.c
 
 clean:
 	rm -rf  *o
-
